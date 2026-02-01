@@ -1,0 +1,28 @@
+# Data processing
+polars>=0.20.0,<1.0.0
+numpy>=1.24.0,<2.0.0
+pandas>=2.0.0,<3.0.0
+
+# Database
+duckdb>=0.10.0,<1.0.0
+
+# Modeling & statistics
+scikit-learn>=1.4.0,<2.0.0
+statsmodels>=0.14.0,<1.0.0
+scipy>=1.12.0,<2.0.0
+
+# Visualization
+plotly>=5.18.0,<6.0.0
+matplotlib>=3.8.0,<4.0.0
+
+# Dashboard
+streamlit>=1.30.0,<2.0.0
+
+# Jupyter
+jupyter>=1.0.0,<2.0.0
+notebook>=6.4.0,<7.0.0
+
+# Development (CI)
+pytest>=7.0.0,<9.0.0
+ruff>=0.3.0,<1.0.0
+sqlfluff>=2.3.0,<3.0.0

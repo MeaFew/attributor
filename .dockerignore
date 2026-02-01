@@ -1,0 +1,28 @@
+# Data
+data/raw/*.csv
+data/raw/*.tsv
+data/processed/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Outputs
+reports/images/
+models/
+
+# WorkBuddy
+.workbuddy/

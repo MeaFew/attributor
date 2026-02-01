@@ -1,0 +1,41 @@
+# Data
+*.csv
+*.parquet
+*.db
+*.duckdb
+data/processed/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Outputs
+reports/images/
+*.png
+*.jpg
+*.svg
+models/
+*.pkl
+*.joblib
+
+# WorkBuddy
+.workbuddy/
