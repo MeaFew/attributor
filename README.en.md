@@ -83,29 +83,30 @@ Key operations:
 
 ### 2. Marketing Mix Modeling (`scripts/mmm_model.py`)
 
-| Model | R² | Adj. R² | Best Regularization | Max VIF |
-|-------|-----|---------|---------------------|---------|
-| OLS | 0.72 | 0.68 | — | 8.3 |
-| **Ridge** | **0.74** | **0.71** | α = 10.0 | 3.1 |
-| Lasso | 0.73 | 0.70 | α = 1.0 | 2.8 |
+| Model | R² | Adj. R² | Best Regularization |
+|-------|-----|---------|---------------------|
+| OLS | 0.569 | 0.52 | — |
+| **Ridge** | 0.569 | 0.52 | α = 1.0 |
+| Lasso | 0.569 | 0.52 | α = 0.1 |
 
-> **Ridge selected as final model**: While maintaining interpretability, L2 regularization reduces VIF from 8.3 to 3.1, completely eliminating multicollinearity between Google Paid Search and Meta Facebook.
-
-**Durbin-Watson = 1.87** (close to 2.0), indicating no significant residual autocorrelation. The model satisfies classical linear regression assumptions.
+> R² ≈ 0.57 reflects the typical challenge of cross-brand aggregate MMM: without price/promotion/competitor data, using only channel spend to explain revenue variance hits a natural ceiling. Brand-level MMM with richer features can achieve 0.70–0.85.
 
 ### 3. Multi-Touch Attribution (`scripts/multi_touch_attribution.py`)
 
-Based on real channel structure (Google 5 sub-channels, Meta 3 sub-channels, TikTok, Organic), 50,000 simulated user journeys are generated (3.5% conversion rate, consistent with industry average). Six attribution models are compared:
 
-| Channel | First-Touch | Last-Touch | Linear | Time-Decay | **Shapley** | **Markov** |
-|---------|:-----------:|:----------:|:------:|:----------:|:-----------:|:----------:|
-| Google Paid Search | 17.8% | 16.8% | 17.6% | 18.2% | **16.6%** | **19.4%** |
-| Meta Facebook | 14.6% | 16.0% | 14.3% | 15.1% | **14.0%** | **15.1%** |
-| Google Shopping | 14.2% | 13.1% | 13.6% | 13.8% | **12.4%** | **14.8%** |
-| Meta Instagram | 12.1% | 11.5% | 12.0% | 11.2% | **11.8%** | **10.9%** |
-| TikTok Ads | 10.5% | 12.3% | 10.8% | 11.5% | **10.2%** | **11.7%** |
-| Google Display | 9.8% | 8.9% | 9.5% | 8.6% | **9.1%** | **8.4%** |
-| Organic | 21.0% | 21.4% | 22.2% | 21.6% | **25.9%** | **19.7%** |
+Based on real channel structure (Google 5 sub-channels, Meta 3 sub-channels, TikTok, Organic), 50,000 simulated user journeys are generated (3.5% conversion rate). Five attribution models plus removal effect analysis are compared:
+
+| Channel | First-Touch | Last-Touch | Linear | **Shapley** | **Removal Eff.** |
+|---------|:-----------:|:----------:|:------:|:-----------:|:----------:|
+| Google Paid Search | 17.8% | 16.8% | 17.6% | **16.6%** | **19.4%** |
+| Meta Facebook | 14.6% | 16.0% | 14.3% | **14.0%** | **15.1%** |
+| Google Shopping | 14.2% | 13.1% | 13.6% | **12.4%** | **14.8%** |
+| Meta Instagram | 8.9% | 11.1% | 10.4% | **9.7%** | **6.4%** |
+| Google PMax | 10.1% | 9.1% | 9.0% | **10.0%** | **11.0%** |
+| TikTok Ads | 7.8% | 8.6% | 8.2% | **8.5%** | **9.7%** |
+| Google Display | 7.3% | 6.5% | 6.5% | **7.5%** | **5.9%** |
+| Google Video | 6.2% | 5.6% | 6.7% | **6.5%** | **5.4%** |
+| Organic + Others | 13.2% | 14.2% | 13.7% | **14.8%** | **12.3%** |
 
 **Key Findings:**
 

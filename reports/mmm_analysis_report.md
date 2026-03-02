@@ -8,7 +8,7 @@ This report presents a comprehensive analysis of marketing channel effectiveness
 - Google Paid Search, Meta Facebook, and Google Shopping are the top three revenue drivers
 - Budget reallocation based on MMM elasticities can improve predicted revenue by ~130%
 - First-touch and last-touch attribution show significant differences for upper-funnel channels (Tiktok, Google Video)
-- Shapley Value and Markov chain models provide more balanced attribution than rule-based methods
+- Shapley Value and removal effect analysis provide more balanced attribution than rule-based methods
 
 ---
 
@@ -104,11 +104,11 @@ To complement macro-level MMM, we generated 50,000 simulated user journeys with 
 3. **Linear:** Equal credit across all touchpoints
 4. **Time-Decay:** Exponentially higher credit for recent touchpoints (7-day half-life)
 5. **Shapley Value:** Game-theoretic fair allocation based on all subset marginal contributions
-6. **Markov Chain:** Removal effect on conversion rates
+6. **Removal Effect:** Removal effect on conversion rates
 
 ### 3.2 Attribution Comparison
 
-| Channel | First | Last | Linear | Shapley | Markov |
+| Channel | First | Last | Linear | Shapley | Removal |
 |---------|------:|-----:|-------:|--------:|-------:|
 | Google Paid Search | 17.8% | 16.8% | 17.6% | 16.6% | 19.4% |
 | Meta Facebook | 14.6% | 16.0% | 14.3% | 14.0% | 15.1% |
@@ -126,7 +126,7 @@ To complement macro-level MMM, we generated 50,000 simulated user journeys with 
 
 - **Shapley Value:** Provides the most balanced allocation, penalizing channels that appear frequently but don't uniquely drive conversions.
 
-- **Markov Chain:** Emphasizes Google Paid Search (19.4%) and Tiktok (9.7%), reflecting their high removal effects — removing these channels causes the largest drop in overall conversion rate.
+- **Removal Effect:** Emphasizes Google Paid Search (19.4%) and Tiktok (9.7%), reflecting their high removal effects — removing these channels causes the largest drop in overall conversion rate.
 
 ---
 
@@ -197,7 +197,7 @@ Using Ridge model elasticities as input to a constrained optimization problem:
 
 ### Attribution Implementation
 - Shapley: exact computation over all 2^14 subsets
-- Markov: removal effect on conversion rates
+- Removal Effect: channel exclusion-based on conversion rates
 - All models normalized to sum to 100%
 
 ### Budget Optimization
