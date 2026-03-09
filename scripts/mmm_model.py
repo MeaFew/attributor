@@ -1,31 +1,34 @@
 """Marketing Mix Modeling (MMM) with OLS, Ridge, and Lasso."""
+
 import argparse
 import json
 from pathlib import Path
 
+import matplotlib
 import numpy as np
 import polars as pl
-from sklearn.linear_model import Ridge, Lasso
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import r2_score, mean_absolute_error
 import statsmodels.api as sm
+from sklearn.linear_model import Lasso, Ridge
+from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.preprocessing import StandardScaler
 from statsmodels.stats.outliers_influence import variance_inflation_factor
 from statsmodels.stats.stattools import durbin_watson
-import matplotlib
+
 matplotlib.use("Agg")
+import sys
+
 import matplotlib.pyplot as plt
 
-import sys
 repo_root = Path(__file__).parents[1].resolve()
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 from config import (
     CLEANED_PARQUET_PATH,
+    IMAGES_DIR,
+    MODEL_OUTPUT_DIR,
     SPEND_CHANNELS,
     TARGET_NEW_REVENUE,
-    MODEL_OUTPUT_DIR,
-    IMAGES_DIR,
 )
 
 
@@ -73,11 +76,15 @@ def fit_ols(X: np.ndarray, y: np.ndarray, feature_names: list[str]) -> dict:
         try:
             vif = variance_inflation_factor(X_const, i)
             if np.isnan(vif) or np.isinf(vif):
-                vif_data.append({"feature": name, "vif": None, "note": "Cannot compute (zero variance)"})
+                vif_data.append(
+                    {"feature": name, "vif": None, "note": "Cannot compute (zero variance)"}
+                )
             else:
                 vif_data.append({"feature": name, "vif": round(float(vif), 2)})
         except Exception:
-            vif_data.append({"feature": name, "vif": None, "note": "Cannot compute (zero variance)"})
+            vif_data.append(
+                {"feature": name, "vif": None, "note": "Cannot compute (zero variance)"}
+            )
 
     # Durbin-Watson
     dw = durbin_watson(model.resid)
@@ -85,11 +92,11 @@ def fit_ols(X: np.ndarray, y: np.ndarray, feature_names: list[str]) -> dict:
     # Coefficients (skip const for channel-level interpretation)
     coefs = {}
     for name, coef, pval in zip(feature_names, model.params[1:], model.pvalues[1:]):
-            coefs[name] = {
-                "coef": round(float(coef), 4),
-                "pvalue": round(float(pval), 4),
-                "significant": bool(pval < 0.05),
-            }
+        coefs[name] = {
+            "coef": round(float(coef), 4),
+            "pvalue": round(float(pval), 4),
+            "significant": bool(pval < 0.05),
+        }
 
     return {
         "model": "OLS",
@@ -165,8 +172,13 @@ def fit_lasso(X: np.ndarray, y: np.ndarray, feature_names: list[str], alpha: flo
     }
 
 
-def plot_model_comparison(ols_result: dict, ridge_result: dict, lasso_result: dict,
-                          feature_names: list[str], output_dir: Path) -> None:
+def plot_model_comparison(
+    ols_result: dict,
+    ridge_result: dict,
+    lasso_result: dict,
+    feature_names: list[str],
+    output_dir: Path,
+) -> None:
     """Plot coefficient comparison across models."""
     fig, ax = plt.subplots(figsize=(12, 6))
 
@@ -182,7 +194,10 @@ def plot_model_comparison(ols_result: dict, ridge_result: dict, lasso_result: di
     lasso_vals = [lasso_result["coefficients"].get(f, {}).get("coef", 0) for f in spend_features]
 
     # Clean labels
-    labels = [f.replace("_adstock", "").replace("google_", "G_").replace("meta_", "M_") for f in spend_features]
+    labels = [
+        f.replace("_adstock", "").replace("google_", "G_").replace("meta_", "M_")
+        for f in spend_features
+    ]
 
     ax.bar(x - width, ols_vals, width, label="OLS", alpha=0.8)
     ax.bar(x, ridge_vals, width, label="Ridge", alpha=0.8)
@@ -280,10 +295,12 @@ def select_best_brand(df: pl.DataFrame) -> tuple[str, str]:
     """Select brand+territory with most complete data."""
     summary = (
         df.group_by(["organisation_id", "territory_name"])
-        .agg([
-            pl.len().alias("n_rows"),
-            pl.col("total_spend").sum().alias("total_spend"),
-        ])
+        .agg(
+            [
+                pl.len().alias("n_rows"),
+                pl.col("total_spend").sum().alias("total_spend"),
+            ]
+        )
         .sort("total_spend", descending=True)
     )
     best = summary.row(0, named=True)
@@ -299,8 +316,7 @@ def run_cross_brand_elasticity(df: pl.DataFrame) -> pl.DataFrame:
     for row in groups.iter_rows(named=True):
         brand, territory = row["organisation_id"], row["territory_name"]
         sub = df.filter(
-            (pl.col("organisation_id") == brand) &
-            (pl.col("territory_name") == territory)
+            (pl.col("organisation_id") == brand) & (pl.col("territory_name") == territory)
         )
         if sub.height < 100:
             continue
@@ -309,12 +325,14 @@ def run_cross_brand_elasticity(df: pl.DataFrame) -> pl.DataFrame:
             ridge = fit_ridge(X, y, feature_names, alpha=1.0)
             for feat, info in ridge["coefficients"].items():
                 if "adstock" in feat:
-                    results.append({
-                        "brand": brand,
-                        "territory": territory,
-                        "channel": feat.replace("_adstock", ""),
-                        "elasticity": info["coef"],
-                    })
+                    results.append(
+                        {
+                            "brand": brand,
+                            "territory": territory,
+                            "channel": feat.replace("_adstock", ""),
+                            "elasticity": info["coef"],
+                        }
+                    )
         except Exception as e:
             print(f"  Skip {brand}/{territory}: {e}")
             continue

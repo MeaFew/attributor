@@ -1,19 +1,19 @@
 """Generate simulated user touchpoint data for multi-touch attribution."""
+
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
 import polars as pl
 
-import sys
 repo_root = Path(__file__).parents[1].resolve()
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 from config import (
-    CLEANED_PARQUET_PATH,
-    SIMULATED_TOUCHPOINTS_PATH,
     SIMULATED_JOURNEYS_PATH,
+    SIMULATED_TOUCHPOINTS_PATH,
     SIMULATION_PARAMS,
 )
 
@@ -68,23 +68,27 @@ def generate_touchpoints(
             path = []
             for i, (ch, dt) in enumerate(zip(touch_channels, touch_dates)):
                 is_conv = 1 if (is_converter and i == n_touches - 1) else 0
-                touchpoint_records.append({
-                    "user_id": uid,
-                    "timestamp": str(dt),
-                    "channel": ch,
-                    "touchpoint_number": i + 1,
-                    "is_conversion": is_conv,
-                    "conversion_value": conv_value if is_conv else 0.0,
-                })
+                touchpoint_records.append(
+                    {
+                        "user_id": uid,
+                        "timestamp": str(dt),
+                        "channel": ch,
+                        "touchpoint_number": i + 1,
+                        "is_conversion": is_conv,
+                        "conversion_value": conv_value if is_conv else 0.0,
+                    }
+                )
                 path.append(ch)
 
-            journey_records.append({
-                "user_id": uid,
-                "path": " > ".join(path),
-                "path_length": len(path),
-                "converted": 1 if is_converter else 0,
-                "conversion_value": conv_value,
-            })
+            journey_records.append(
+                {
+                    "user_id": uid,
+                    "path": " > ".join(path),
+                    "path_length": len(path),
+                    "converted": 1 if is_converter else 0,
+                    "conversion_value": conv_value,
+                }
+            )
 
     touchpoints_df = pl.DataFrame(touchpoint_records)
     journeys_df = pl.DataFrame(journey_records)
@@ -94,8 +98,17 @@ def generate_touchpoints(
 
 def main(output_touchpoints: Path | None = None, output_journeys: Path | None = None) -> None:
     """Run touchpoint generation."""
+    # Read parameters from shared config
+    params = SIMULATION_PARAMS
     print("Generating simulated user touchpoint data...")
-    touchpoints, journeys = generate_touchpoints()
+    touchpoints, journeys = generate_touchpoints(
+        n_users=params["n_users"],
+        max_touchpoints=params["max_touchpoints_per_user"],
+        conversion_rate=params["conversion_rate"],
+        channels=params["channels"],
+        channel_weights=params["channel_weights"],
+        date_range_days=params["date_range_days"],
+    )
 
     tp_out = output_touchpoints or SIMULATED_TOUCHPOINTS_PATH
     j_out = output_journeys or SIMULATED_JOURNEYS_PATH
@@ -104,12 +117,16 @@ def main(output_touchpoints: Path | None = None, output_journeys: Path | None = 
     touchpoints.write_parquet(tp_out)
     journeys.write_parquet(j_out)
 
-    print(f"  Touchpoints: {touchpoints.height:,} rows → {tp_out}")
-    print(f"  Journeys: {journeys.height:,} rows ({journeys['converted'].sum():,} converters) → {j_out}")
+    print(f"  Touchpoints: {touchpoints.height:,} rows -> {tp_out}")
+    print(
+        f"  Journeys: {journeys.height:,} rows ({journeys['converted'].sum():,} converters) -> {j_out}"
+    )
 
     # Summary stats
     print("\nChannel distribution in touchpoints:")
-    print(touchpoints.group_by("channel").agg(pl.len().alias("count")).sort("count", descending=True))
+    print(
+        touchpoints.group_by("channel").agg(pl.len().alias("count")).sort("count", descending=True)
+    )
 
     print("\nPath length distribution:")
     print(journeys.group_by("path_length").agg(pl.len().alias("count")).sort("path_length"))

@@ -1,17 +1,20 @@
 """Streamlit dashboard for Marketing Attribution & Budget Optimization."""
-from pathlib import Path
 
 import json
+import sys
+from pathlib import Path
+
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import polars as pl
 import streamlit as st
 
-# Paths
-PROJECT_ROOT = Path(__file__).parents[1].resolve()
-MODEL_OUTPUT_DIR = PROJECT_ROOT / "data" / "processed" / "models"
-IMAGES_DIR = PROJECT_ROOT / "reports" / "images"
+repo_root = Path(__file__).parents[1].resolve()
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
+from config import IMAGES_DIR, MODEL_OUTPUT_DIR
 
 st.set_page_config(page_title="Marketing Attribution", layout="wide")
 
@@ -72,7 +75,7 @@ if page == "MMM Overview":
     vif_data = ols.get("vif", [])
     if vif_data:
         vif_df = pl.DataFrame(vif_data).sort("vif", descending=True)
-        st.dataframe(vif_df.to_pandas(), use_container_width=True)
+        st.dataframe(vif_df.to_pandas(), width="stretch")
 
     # Coefficient comparison chart
     st.subheader("Channel Coefficient Comparison")
@@ -80,25 +83,32 @@ if page == "MMM Overview":
     for model_name, model_data in [("OLS", ols), ("Ridge", ridge), ("Lasso", lasso)]:
         for feat, info in model_data["coefficients"].items():
             if "adstock" in feat:
-                coef_data.append({
-                    "Channel": feat.replace("_adstock", "").replace("google_", "G_").replace("meta_", "M_"),
-                    "Model": model_name,
-                    "Coefficient": info["coef"],
-                })
+                coef_data.append(
+                    {
+                        "Channel": feat.replace("_adstock", "")
+                        .replace("google_", "G_")
+                        .replace("meta_", "M_"),
+                        "Model": model_name,
+                        "Coefficient": info["coef"],
+                    }
+                )
     if coef_data:
         coef_df = pl.DataFrame(coef_data)
         fig = px.bar(
             coef_df.to_pandas(),
-            x="Channel", y="Coefficient", color="Model",
-            barmode="group", height=500,
+            x="Channel",
+            y="Coefficient",
+            color="Model",
+            barmode="group",
+            height=500,
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     # Residual diagnostics images
     st.subheader("Residual Diagnostics")
     res_img = IMAGES_DIR / "mmm_residual_diagnostics.png"
     if res_img.exists():
-        st.image(str(res_img), use_container_width=True)
+        st.image(str(res_img), width="stretch")
 
 # ---------------------------------------------------------------------------
 # Page 2: Attribution Comparison
@@ -109,7 +119,9 @@ if page == "Attribution Comparison":
     try:
         attr = load_attribution_results()
     except FileNotFoundError:
-        st.error("Attribution results not found. Run `python scripts/multi_touch_attribution.py` first.")
+        st.error(
+            "Attribution results not found. Run `python scripts/multi_touch_attribution.py` first."
+        )
         st.stop()
 
     # Prepare data for stacked bar chart
@@ -119,11 +131,13 @@ if page == "Attribution Comparison":
     fig = go.Figure()
     for model in model_names:
         values = [attr[model].get(ch, 0) for ch in channels]
-        fig.add_trace(go.Bar(
-            name=model,
-            x=channels,
-            y=values,
-        ))
+        fig.add_trace(
+            go.Bar(
+                name=model,
+                x=channels,
+                y=values,
+            )
+        )
 
     fig.update_layout(
         barmode="group",
@@ -132,7 +146,7 @@ if page == "Attribution Comparison":
         yaxis_title="Attributed %",
         height=600,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     # Data table
     st.subheader("Detailed Comparison")
@@ -142,7 +156,7 @@ if page == "Attribution Comparison":
         for model in model_names:
             row[model] = f"{attr[model].get(ch, 0):.1f}%"
         rows.append(row)
-    st.dataframe(pl.DataFrame(rows).to_pandas(), use_container_width=True)
+    st.dataframe(pl.DataFrame(rows).to_pandas(), width="stretch")
 
 # ---------------------------------------------------------------------------
 # Page 3: Budget Simulator
@@ -162,8 +176,11 @@ if page == "Budget Simulator":
     col1, col2, col3 = st.columns(3)
     col1.metric("Total Budget", f"${result['total_budget']:,.0f}")
     col2.metric("Current Revenue", f"${result['current_revenue']:,.0f}")
-    col3.metric("Optimal Revenue", f"${result['optimal_revenue']:,.0f}",
-                delta=f"{result['improvement_pct']:.1f}%")
+    col3.metric(
+        "Optimal Revenue",
+        f"${result['optimal_revenue']:,.0f}",
+        delta=f"{result['improvement_pct']:.1f}%",
+    )
 
     # Budget allocation comparison
     st.subheader("Budget Allocation")
@@ -181,7 +198,7 @@ if page == "Budget Simulator":
         yaxis_title="Spend ($)",
         height=500,
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     # Interactive budget slider
     st.subheader("Interactive Budget Adjustment")
@@ -203,13 +220,22 @@ if page == "Budget Simulator":
     try:
         mmm = load_mmm_results()
         ridge = mmm["models"]["ridge"]["coefficients"]
-        predicted = sum(
-            ridge.get(ch.replace("_spend", "_adstock"), {}).get("coef", 0) * adjusted[ch]
-            for ch in channels
+        ridge_intercept = mmm["models"]["ridge"].get("intercept", 0.0)
+        predicted = (
+            sum(
+                ridge.get(ch.replace("_spend", "_adstock"), {}).get("coef", 0) * adjusted[ch]
+                for ch in channels
+            )
+            + ridge_intercept
         )
         current_pred = result["current_revenue"]
-        st.metric("Predicted Revenue", f"${predicted:,.0f}",
-                  delta=f"{(predicted - current_pred) / abs(current_pred) * 100:.1f}%" if current_pred != 0 else "N/A")
+        st.metric(
+            "Predicted Revenue",
+            f"${predicted:,.0f}",
+            delta=f"{(predicted - current_pred) / abs(current_pred) * 100:.1f}%"
+            if current_pred != 0
+            else "N/A",
+        )
     except (FileNotFoundError, KeyError, TypeError) as e:
         st.warning(f"Failed to load MMM results: {e}")
         st.info("Load MMM results for revenue prediction.")

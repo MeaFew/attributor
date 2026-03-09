@@ -1,4 +1,4 @@
-"""Marketing Attribution & Budget Optimization — Centralized Configuration."""
+﻿"""Marketing Attribution & Budget Optimization - Centralized Configuration."""
 from pathlib import Path
 import os
 
@@ -20,9 +20,6 @@ CLEANED_PARQUET_PATH = PROCESSED_DATA_DIR / "mmm_cleaned.parquet"
 # Simulated touchpoint data
 SIMULATED_TOUCHPOINTS_PATH = PROCESSED_DATA_DIR / "simulated_touchpoints.parquet"
 SIMULATED_JOURNEYS_PATH = PROCESSED_DATA_DIR / "simulated_journeys.parquet"
-
-# DuckDB
-DUCKDB_PATH = PROCESSED_DATA_DIR / "analytics.duckdb"
 
 # Output directories
 MODEL_OUTPUT_DIR = PROCESSED_DATA_DIR / "models"

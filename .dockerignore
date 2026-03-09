@@ -1,6 +1,7 @@
-# Data
+﻿# Data
 data/raw/*.csv
 data/raw/*.tsv
+data/processed/*.parquet
 
 # Python
 __pycache__/

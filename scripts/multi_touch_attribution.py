@@ -1,7 +1,10 @@
 """Multi-touch attribution models comparison."""
+
 import argparse
 import json
 import math
+import re
+import sys
 from collections import defaultdict
 from itertools import combinations
 from pathlib import Path
@@ -9,16 +12,15 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-import sys
 repo_root = Path(__file__).parents[1].resolve()
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 from config import (
-    SIMULATED_TOUCHPOINTS_PATH,
-    SIMULATED_JOURNEYS_PATH,
-    MODEL_OUTPUT_DIR,
     IMAGES_DIR,
+    MODEL_OUTPUT_DIR,
+    SIMULATED_JOURNEYS_PATH,
+    SIMULATED_TOUCHPOINTS_PATH,
 )
 
 
@@ -32,6 +34,7 @@ def load_data() -> tuple[pl.DataFrame, pl.DataFrame]:
 # ---------------------------------------------------------------------------
 # Rule-based attribution models
 # ---------------------------------------------------------------------------
+
 
 def first_touch_attribution(tp: pl.DataFrame, journeys: pl.DataFrame) -> dict[str, float]:
     """Attribute 100% to the first touchpoint."""
@@ -73,30 +76,43 @@ def linear_attribution(tp: pl.DataFrame) -> dict[str, float]:
     return {row["channel"]: row["attributed"] for row in result.iter_rows(named=True)}
 
 
-def time_decay_attribution(tp: pl.DataFrame, half_life_days: float = 7.0) -> dict[str, float]:
-    """Attribute more weight to touchpoints closer to conversion."""
+def time_decay_attribution(tp: pl.DataFrame, journeys: pl.DataFrame, half_life_days: float = 7.0) -> dict[str, float]:
+    """Attribute more weight to touchpoints closer to conversion.
+
+    Each touchpoint receives a share of the journey's total conversion_value,
+    proportional to its time-decay weight relative to all touchpoints in the
+    same journey.
+    """
+    # Drop per-touchpoint conversion_value (only set on conversion touchpoint)
+    tp = tp.drop("conversion_value")
+
     # Get conversion timestamp per user
     conv = tp.filter(pl.col("is_conversion") == 1).select(["user_id", "timestamp"])
     tp = tp.join(conv, on="user_id", suffix="_conv")
 
     # Compute days to conversion
     tp = tp.with_columns(
-        (pl.col("timestamp_conv").str.to_datetime() - pl.col("timestamp").str.to_datetime())
+        (
+            pl.col("timestamp_conv").str.to_datetime(strict=False)
+            - pl.col("timestamp").str.to_datetime(strict=False)
+        )
         .dt.total_days()
         .alias("days_to_conv")
     )
 
     # Decay weight: 2^(-days/half_life)
-    tp = tp.with_columns(
-        (2.0 ** (-pl.col("days_to_conv") / half_life_days)).alias("weight")
-    )
+    tp = tp.with_columns((2.0 ** (-pl.col("days_to_conv") / half_life_days)).alias("weight"))
 
     # Normalize weights per user
     weights = tp.group_by("user_id").agg(pl.sum("weight").alias("total_weight"))
     tp = tp.join(weights, on="user_id")
-    tp = tp.with_columns(
-        pl.col("weight") / pl.col("total_weight") * pl.col("conversion_value")
-    )
+
+    # Join total conversion_value from the full journey table
+    conv_values = journeys.select(["user_id", "conversion_value"])
+    tp = tp.join(conv_values, on="user_id")
+
+    # Attribute: weight/total_weight * user's total conversion_value
+    tp = tp.with_columns(pl.col("weight") / pl.col("total_weight") * pl.col("conversion_value"))
 
     result = (
         tp.group_by("channel")
@@ -109,6 +125,7 @@ def time_decay_attribution(tp: pl.DataFrame, half_life_days: float = 7.0) -> dic
 # ---------------------------------------------------------------------------
 # Shapley Value attribution
 # ---------------------------------------------------------------------------
+
 
 def shapley_attribution(journeys: pl.DataFrame) -> dict[str, float]:
     """Compute Shapley Value for each channel based on all subset combinations.
@@ -158,6 +175,12 @@ def shapley_attribution(journeys: pl.DataFrame) -> dict[str, float]:
             marginal = v.get(subset_with_ch, 0) - v.get(subset_set, 0)
             shapley[ch] += marginal * weight
 
+    # Check for negative Shapley values and warn
+    negative_channels = [(k, v) for k, v in shapley.items() if v < 0]
+    if negative_channels:
+        names = ", ".join(f"{k} ({v:.2f})" for k, v in negative_channels)
+        print(f"  Warning: {len(negative_channels)} channel(s) had negative Shapley values "
+              f"and were clipped to 0: {names}")
     # Ensure non-negative
     shapley = {k: max(0.0, v) for k, v in shapley.items()}
 
@@ -171,19 +194,21 @@ def shapley_attribution(journeys: pl.DataFrame) -> dict[str, float]:
 
 
 # ---------------------------------------------------------------------------
-# Markov Chain attribution
+# Removal Effect attribution
 # ---------------------------------------------------------------------------
 
-def markov_attribution(journeys: pl.DataFrame) -> dict[str, float]:
-    """Channel removal effect analysis (Markov-chain-inspired).
+
+def removal_effect_attribution(journeys: pl.DataFrame) -> dict[str, float]:
+    """Channel removal effect analysis.
 
     Computes attribution by measuring the drop in overall conversion rate when
-    a channel is removed from all user journeys. This is NOT a full Markov chain
-    (no transition probability matrix), but captures the same intuition:
-    channels whose removal causes the largest conversion drop get more credit.
+    a channel is removed from all user journeys. Channels whose removal causes
+    the largest conversion drop get more credit.
 
-    TODO: Implement full Markov chain with transition probability matrix and
-    stationary distribution changes for proper removal effect.
+    This is a removal effect analysis, NOT a full Markov chain model
+    (no transition probability matrix). The name reflects the underlying
+    intuition: measure each channel's contribution by observing what happens
+    when it is removed.
     """
     total_users = journeys.height
     total_conv = journeys.filter(pl.col("converted") == 1).height
@@ -199,9 +224,7 @@ def markov_attribution(journeys: pl.DataFrame) -> dict[str, float]:
     removal_effects = {}
     for ch in sorted(all_channels):
         # Users who never touched this channel
-        without_ch = journeys.filter(
-            ~pl.col("path").str.contains(rf"\b{ch}\b")
-        )
+        without_ch = journeys.filter(~pl.col("path").str.contains(rf"\b{re.escape(ch)}\b"))
         conv_without = without_ch.filter(pl.col("converted") == 1).height
         rate_without = conv_without / without_ch.height if without_ch.height > 0 else 0
         effect = (baseline_rate - rate_without) / baseline_rate
@@ -211,17 +234,20 @@ def markov_attribution(journeys: pl.DataFrame) -> dict[str, float]:
     total_effect = sum(removal_effects.values())
     if total_effect > 0:
         total_conv_value = journeys.filter(pl.col("converted") == 1)["conversion_value"].sum()
-        markov = {ch: round(effect / total_effect * total_conv_value, 2)
-                  for ch, effect in removal_effects.items()}
+        result = {
+            ch: round(effect / total_effect * total_conv_value, 2)
+            for ch, effect in removal_effects.items()
+        }
     else:
-        markov = {ch: 0.0 for ch in removal_effects}
+        result = {ch: 0.0 for ch in removal_effects}
 
-    return dict(sorted(markov.items(), key=lambda x: x[1], reverse=True))
+    return dict(sorted(result.items(), key=lambda x: x[1], reverse=True))
 
 
 # ---------------------------------------------------------------------------
 # Run all models and compare
 # ---------------------------------------------------------------------------
+
 
 def run_all_models() -> dict:
     """Run all attribution models and return comparison."""
@@ -233,9 +259,9 @@ def run_all_models() -> dict:
         "first_touch": first_touch_attribution(tp, journeys),
         "last_touch": last_touch_attribution(tp),
         "linear": linear_attribution(tp),
-        "time_decay": time_decay_attribution(tp),
+        "time_decay": time_decay_attribution(tp, journeys),
         "shapley": shapley_attribution(journeys),
-        "markov": markov_attribution(journeys),
+        "removal_effect": removal_effect_attribution(journeys),
     }
 
     # Normalize to percentages

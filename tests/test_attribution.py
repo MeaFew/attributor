@@ -1,4 +1,4 @@
-"""Unit tests for attribution models."""
+﻿"""Unit tests for attribution models."""
 from pathlib import Path
 
 import pytest
@@ -20,7 +20,7 @@ def test_attribution_results_exist():
 def test_attribution_models_present():
     with open(MODEL_OUTPUT_DIR / "attribution_comparison.json") as f:
         data = json.load(f)
-    expected_models = ["first_touch", "last_touch", "linear", "time_decay", "shapley", "markov"]
+    expected_models = ["first_touch", "last_touch", "linear", "time_decay", "shapley", "removal_effect"]
     for model in expected_models:
         assert model in data, f"Model {model} not found in attribution results"
 

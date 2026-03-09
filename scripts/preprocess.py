@@ -1,26 +1,28 @@
 """Data preprocessing for the Conjura MMM dataset."""
+
 import argparse
+
+# Allow running from repo root
+import sys
 from pathlib import Path
 
 import polars as pl
 
-# Allow running from repo root
-import sys
 repo_root = Path(__file__).parents[1].resolve()
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 from config import (
-    RAW_CSV_PATH,
     CLEANED_PARQUET_PATH,
-    SPEND_CHANNELS,
     CLICK_CHANNELS,
     IMPRESSION_CHANNELS,
     ORGANIC_CHANNELS,
-    TARGET_NEW_CUSTOMERS,
+    RAW_CSV_PATH,
+    SPEND_CHANNELS,
     TARGET_ALL_CUSTOMERS,
-    TARGET_NEW_REVENUE,
     TARGET_ALL_REVENUE,
+    TARGET_NEW_CUSTOMERS,
+    TARGET_NEW_REVENUE,
 )
 
 
@@ -34,12 +36,20 @@ def load_raw_data(path: Path) -> pl.DataFrame:
 
     # Coerce numeric columns that may have been inferred as String due to empty values
     numeric_cols = (
-        SPEND_CHANNELS + CLICK_CHANNELS + IMPRESSION_CHANNELS +
-        ORGANIC_CHANNELS +
-        [TARGET_NEW_CUSTOMERS, TARGET_ALL_CUSTOMERS,
-         TARGET_NEW_REVENUE, TARGET_ALL_REVENUE,
-         "first_purchases_units", "all_purchases_units",
-         "first_purchases_gross_discount", "all_purchases_gross_discount"]
+        SPEND_CHANNELS
+        + CLICK_CHANNELS
+        + IMPRESSION_CHANNELS
+        + ORGANIC_CHANNELS
+        + [
+            TARGET_NEW_CUSTOMERS,
+            TARGET_ALL_CUSTOMERS,
+            TARGET_NEW_REVENUE,
+            TARGET_ALL_REVENUE,
+            "first_purchases_units",
+            "all_purchases_units",
+            "first_purchases_gross_discount",
+            "all_purchases_gross_discount",
+        ]
     )
     for col_name in numeric_cols:
         if col_name in df.columns and df[col_name].dtype == pl.String:
@@ -54,13 +64,9 @@ def load_raw_data(path: Path) -> pl.DataFrame:
 def handle_missing_values(df: pl.DataFrame) -> pl.DataFrame:
     """Fill missing spend/clicks/impressions with 0 (brand doesn't use that channel)."""
     numeric_cols = SPEND_CHANNELS + CLICK_CHANNELS + IMPRESSION_CHANNELS
-    df = df.with_columns([
-        pl.col(c).fill_null(0) for c in numeric_cols if c in df.columns
-    ])
+    df = df.with_columns([pl.col(c).fill_null(0) for c in numeric_cols if c in df.columns])
     # Fill organic channels
-    df = df.with_columns([
-        pl.col(c).fill_null(0) for c in ORGANIC_CHANNELS if c in df.columns
-    ])
+    df = df.with_columns([pl.col(c).fill_null(0) for c in ORGANIC_CHANNELS if c in df.columns])
     return df
 
 
@@ -70,16 +76,12 @@ def create_derived_features(df: pl.DataFrame) -> pl.DataFrame:
     available_clicks = [c for c in CLICK_CHANNELS if c in df.columns]
 
     # Total spend
-    df = df.with_columns(
-        pl.sum_horizontal(available_spend).alias("total_spend")
-    )
+    df = df.with_columns(pl.sum_horizontal(available_spend).alias("total_spend"))
 
     # Total clicks (paid + organic)
     all_click_cols = available_clicks + ORGANIC_CHANNELS
     all_click_cols = [c for c in all_click_cols if c in df.columns]
-    df = df.with_columns(
-        pl.sum_horizontal(all_click_cols).alias("total_clicks")
-    )
+    df = df.with_columns(pl.sum_horizontal(all_click_cols).alias("total_clicks"))
 
     # CTR per channel
     for spend_col, click_col, imp_col in zip(SPEND_CHANNELS, CLICK_CHANNELS, IMPRESSION_CHANNELS):
@@ -166,10 +168,10 @@ def create_lag_features(df: pl.DataFrame) -> pl.DataFrame:
         channel = spend_col.replace("_spend", "")
         df = df.with_columns(
             (
-                pl.col(spend_col) +
-                decay * pl.col(f"{channel}_lag_1") +
-                decay**2 * pl.col(f"{channel}_lag_3") +
-                decay**3 * pl.col(f"{channel}_lag_7")
+                pl.col(spend_col)
+                + decay * pl.col(f"{channel}_lag_1")
+                + decay**2 * pl.col(f"{channel}_lag_3")
+                + decay**3 * pl.col(f"{channel}_lag_7")
             ).alias(f"{channel}_adstock")
         )
 
@@ -190,8 +192,7 @@ def filter_extreme_outliers(df: pl.DataFrame) -> pl.DataFrame:
     )
     before = df.height
     df = df.filter(
-        (pl.col(TARGET_NEW_REVENUE) - pl.col("_mean_revenue")).abs()
-        <= 5 * pl.col("_std_revenue")
+        (pl.col(TARGET_NEW_REVENUE) - pl.col("_mean_revenue")).abs() <= 5 * pl.col("_std_revenue")
     )
     after = df.height
     if before != after:

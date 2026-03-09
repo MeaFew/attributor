@@ -1,4 +1,4 @@
-name: CI
+﻿name: CI
 
 on:
   push:
@@ -59,7 +59,7 @@ jobs:
           ch = {'ch1': 33.3, 'ch2': 33.4, 'ch3': 33.3}
           data = {
             'first_touch': ch, 'last_touch': ch, 'linear': ch,
-            'time_decay': ch, 'shapley': ch, 'markov': ch
+            'time_decay': ch, 'shapley': ch, 'removal_effect': ch
           }
           json.dump(data, open('data/processed/models/attribution_comparison.json', 'w'), indent=2)
           "
@@ -84,3 +84,6 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t marketing-attribution-mmm .
+
+      - name: Smoke test
+        run: docker run --rm marketing-attribution-mmm python -c "import streamlit; print('OK')"

@@ -43,16 +43,67 @@ def main():
     passed = 0
     failed = 0
 
-    # --- Project-specific checks go here ---
-    # Example:
-    # r2_readme = read_readme_metric(readme, "R²")
-    # if r2_readme is not None:
-    #     with open(root / "reports" / "model_results.json") as f:
-    #         actual = json.load(f)
-    #     r2_actual = actual["models"]["ridge"]["r2"]
-    #     ok = check(abs(r2_readme - r2_actual) < 0.01,
-    #                f"R²: README={r2_readme:.3f}, actual={r2_actual:.3f}")
-    #     if ok: passed += 1 else: failed += 1
+    # --- Check 1: R² in README matches mmm_results.json ---
+    mmm_path = root / "data" / "processed" / "models" / "mmm_results.json"
+    if mmm_path.exists():
+        with open(mmm_path) as f:
+            mmm = json.load(f)
+        r2_actual = round(mmm["models"]["ridge"]["r2"], 3)
+
+        # Extract R² from README benchmark table Ridge row
+        readme_text = readme.read_text(encoding="utf-8")
+        # Match the Ridge row in the benchmark/result table: | **Ridge** | 0.569 | ...
+        r2_match = re.search(r"\|\s*\*\*?Ridge\*\*?\s*\|\s*(\d+\.\d+)", readme_text)
+        if r2_match:
+            r2_readme = float(r2_match.group(1))
+            r2_readme_r = round(r2_readme, 3)
+            ok = check(
+                abs(r2_readme_r - r2_actual) < 0.01,
+                f"R² (Ridge): README={r2_readme_r:.3f}, actual (mmm_results.json)={r2_actual:.3f}",
+            )
+            if ok:
+                passed += 1
+            else:
+                failed += 1
+        else:
+            failed += 1
+            check(False, "R² (Ridge): could not extract from README.md")
+    else:
+        print(f"  SKIP: mmm_results.json not found at {mmm_path}")
+        print("         Run 'python scripts/mmm_model.py' first.")
+
+    # --- Check 2: Attribution percentages sum to ~100% per model ---
+    attr_path = root / "data" / "processed" / "models" / "attribution_comparison.json"
+    if attr_path.exists():
+        with open(attr_path) as f:
+            attr = json.load(f)
+        for model_name, values in attr.items():
+            total = sum(values.values())
+            ok = check(
+                95 <= total <= 105,
+                f"Attribution sum ({model_name}): {total:.1f}% (expected ~100%)",
+            )
+            if ok:
+                passed += 1
+            else:
+                failed += 1
+    else:
+        print(f"  SKIP: attribution_comparison.json not found at {attr_path}")
+        print("         Run 'python scripts/multi_touch_attribution.py' first.")
+
+    # --- Check 3: At least 5 attribution models in attribution_comparison.json ---
+    if attr_path.exists():
+        with open(attr_path) as f:
+            attr = json.load(f)
+        n_models = len(attr)
+        ok = check(
+            n_models >= 5,
+            f"Attribution model count: {n_models} (expected >= 5)",
+        )
+        if ok:
+            passed += 1
+        else:
+            failed += 1
 
     # --- Summary ---
     total = passed + failed

@@ -30,9 +30,6 @@ test:
 	pytest tests/ -v
 
 verify: lint format-check test audit
-	ruff check scripts/ dashboard/ --ignore E501,F401,E402
-	ruff format --check scripts/ dashboard/
-	pytest tests/ -v
 
 all: preprocess mmm attribution optimize
 
@@ -44,6 +41,11 @@ clean:
 
 # === Quality gates (extended) ===
 
+lint:
+	ruff check scripts/ dashboard/ --ignore E501,F401,E402
+
+# === Quality gates (extended) ===
+
 format:
 	ruff format scripts/ dashboard/
 
@@ -51,4 +53,4 @@ format-check:
 	ruff format --check scripts/ dashboard/
 
 audit:
-	$(PYTHON) scripts/audit_consistency.py
+	python scripts/audit_consistency.py
