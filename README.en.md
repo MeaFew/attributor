@@ -175,6 +175,14 @@ marketing-attribution-mmm/
 
 ---
 
+## Related Projects
+
+| Project | Repo | Description |
+|---------|------|-------------|
+| E-commerce User Analytics | [MeaFew/ecommerce-user-analytics](https://github.com/MeaFew/ecommerce-user-analytics) | 29M real user behavior records, 10 analytical modules |
+| Credit Risk Scoring | [MeaFew/credit-risk-scoring](https://github.com/MeaFew/credit-risk-scoring) | WOE/IV + XGBoost/LightGBM + SHAP interpretability |
+| Multivariate Time Series | [MeaFew/multivariate-timeseries-forecasting](https://github.com/MeaFew/multivariate-timeseries-forecasting) | LSTM / Transformer / XGBoost forecasting benchmarks |
+
 ## License
 
 Code is released under MIT License. Dataset sourced from the publicly available Conjura MMM Dataset on figshare, subject to its usage terms.

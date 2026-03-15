@@ -192,6 +192,14 @@ marketing-attribution-mmm/
 
 ---
 
+## 相关项目
+
+| 项目 | 仓库 | 简介 |
+|------|------|------|
+| 电商用户行为分析 | [MeaFew/ecommerce-user-analytics](https://github.com/MeaFew/ecommerce-user-analytics) | 2,900万条真实用户行为数据，10大分析模块 |
+| 信用风险评分 | [MeaFew/credit-risk-scoring](https://github.com/MeaFew/credit-risk-scoring) | WOE/IV + XGBoost/LightGBM + SHAP 可解释性 |
+| 多元时序预测 | [MeaFew/multivariate-timeseries-forecasting](https://github.com/MeaFew/multivariate-timeseries-forecasting) | LSTM / Transformer / XGBoost 时序预测对比 |
+
 ## 许可证
 
 代码采用 MIT License。数据集来源于 figshare 公开发布的 Conjura MMM Dataset，遵循其使用条款。
