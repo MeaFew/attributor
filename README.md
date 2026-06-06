@@ -9,6 +9,9 @@
     <img src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" alt="Ruff">
     <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
   </p>
+  <p align="center">
+    <b>中文</b> | <a href="./README.en.md">English</a>
+  </p>
 </p>
 
 ---
