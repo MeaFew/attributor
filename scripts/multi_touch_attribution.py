@@ -33,9 +33,12 @@ def load_data() -> tuple[pl.DataFrame, pl.DataFrame]:
 # Rule-based attribution models
 # ---------------------------------------------------------------------------
 
-def first_touch_attribution(tp: pl.DataFrame) -> dict[str, float]:
+def first_touch_attribution(tp: pl.DataFrame, journeys: pl.DataFrame) -> dict[str, float]:
     """Attribute 100% to the first touchpoint."""
-    first = tp.filter(pl.col("touchpoint_number") == 1)
+    # Get conversion value per user from journeys
+    conv_values = journeys.select(["user_id", "conversion_value"])
+    first = tp.filter(pl.col("touchpoint_number") == 1).drop("conversion_value")
+    first = first.join(conv_values, on="user_id")
     result = (
         first.group_by("channel")
         .agg(pl.sum("conversion_value").alias("attributed"))
@@ -108,17 +111,19 @@ def time_decay_attribution(tp: pl.DataFrame, half_life_days: float = 7.0) -> dic
 # ---------------------------------------------------------------------------
 
 def shapley_attribution(journeys: pl.DataFrame) -> dict[str, float]:
-    """Compute Shapley Value for each channel based on all subset combinations."""
-    # Build conversion count per channel set
-    channel_sets = defaultdict(float)
+    """Compute Shapley Value for each channel based on all subset combinations.
+
+    Uses the standard definition: v(S) = total conversion value of paths whose
+    channel set is a SUBSET of S. Larger S means more paths are included.
+    """
+    # Build exact conversion value per channel set
+    v_exact = defaultdict(float)
     for row in journeys.filter(pl.col("converted") == 1).iter_rows(named=True):
-        channels = set(row["path"].split(" > "))
-        for r in range(1, len(channels) + 1):
-            for subset in combinations(channels, r):
-                channel_sets[frozenset(subset)] += row["conversion_value"]
+        channels = frozenset(row["path"].split(" > "))
+        v_exact[channels] += row["conversion_value"]
 
     all_channels = set()
-    for cs in channel_sets:
+    for cs in v_exact:
         all_channels.update(cs)
     all_channels = sorted(all_channels)
     n = len(all_channels)
@@ -126,24 +131,41 @@ def shapley_attribution(journeys: pl.DataFrame) -> dict[str, float]:
     if n == 0:
         return {}
 
-    shapley = {ch: 0.0 for ch in all_channels}
+    # Enumerate all subsets and compute v(S) = sum of v_exact for all subsets of S
+    all_subsets = []
+    for r in range(0, n + 1):
+        all_subsets.extend(combinations(all_channels, r))
 
+    v = {}
+    for subset in all_subsets:
+        subset_set = frozenset(subset)
+        total = 0.0
+        for exact_set, val in v_exact.items():
+            if exact_set.issubset(subset_set):
+                total += val
+        v[subset_set] = total
+
+    # Compute Shapley values
+    shapley = {ch: 0.0 for ch in all_channels}
     for ch in all_channels:
-        for subset in channel_sets:
-            if ch not in subset:
+        for subset in all_subsets:
+            if ch in subset:
                 continue
-            subset_without_ch = frozenset(subset - {ch})
-            v_with = channel_sets.get(subset, 0)
-            v_without = channel_sets.get(subset_without_ch, 0)
-            marginal = v_with - v_without
             s = len(subset)
-            weight = math.factorial(s - 1) * math.factorial(n - s) / math.factorial(n)
+            subset_set = frozenset(subset)
+            subset_with_ch = frozenset(subset + (ch,))
+            weight = math.factorial(s) * math.factorial(n - s - 1) / math.factorial(n)
+            marginal = v.get(subset_with_ch, 0) - v.get(subset_set, 0)
             shapley[ch] += marginal * weight
 
-    # Normalize
-    total = sum(shapley.values())
-    if total > 0:
-        shapley = {k: round(v / total * sum(channel_sets.values()), 2) for k, v in shapley.items()}
+    # Ensure non-negative
+    shapley = {k: max(0.0, v) for k, v in shapley.items()}
+
+    # Normalize to total conversion value
+    total_conv = sum(v_exact.values())
+    total_shapley = sum(shapley.values())
+    if total_shapley > 0:
+        shapley = {k: round(v / total_shapley * total_conv, 2) for k, v in shapley.items()}
 
     return dict(sorted(shapley.items(), key=lambda x: x[1], reverse=True))
 
@@ -153,83 +175,34 @@ def shapley_attribution(journeys: pl.DataFrame) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 
 def markov_attribution(journeys: pl.DataFrame) -> dict[str, float]:
-    """Markov chain attribution with removal effect."""
-    # Build transition counts: start -> channel1 -> channel2 -> ... -> conversion/null
-    transitions = defaultdict(lambda: defaultdict(float))
-    conversion_count = 0.0
-    null_count = 0.0
+    """Markov chain attribution using removal effect on conversion rates."""
+    total_users = journeys.height
+    total_conv = journeys.filter(pl.col("converted") == 1).height
+    baseline_rate = total_conv / total_users if total_users > 0 else 0
 
-    for row in journeys.iter_rows(named=True):
-        channels = row["path"].split(" > ")
-        conv_value = row["conversion_value"] if row["converted"] else 0
+    if baseline_rate == 0:
+        return {}
 
-        # Start state
-        prev = "start"
-        for ch in channels:
-            transitions[prev][ch] += 1
-            prev = ch
-
-        if row["converted"]:
-            transitions[prev]["conversion"] += 1
-            conversion_count += conv_value
-        else:
-            transitions[prev]["null"] += 1
-            null_count += 1
-
-    all_states = set(transitions.keys()) | {"conversion", "null"}
-
-    # Compute transition probabilities
-    trans_prob = {}
-    for state in transitions:
-        total = sum(transitions[state].values())
-        trans_prob[state] = {k: v / total for k, v in transitions[state].items()}
-
-    # Compute conversion probability from start
-    def conv_prob_from(start: str, removed: set[str] | None = None) -> float:
-        """Monte Carlo simulation of conversion probability."""
-        rng = np.random.default_rng(42)
-        n_sim = 10_000
-        conv = 0
-        for _ in range(n_sim):
-            state = start
-            for _ in range(20):  # max path length
-                if state == "conversion":
-                    conv += 1
-                    break
-                if state == "null":
-                    break
-                if state not in trans_prob:
-                    break
-                probs = trans_prob[state]
-                if removed:
-                    probs = {k: v for k, v in probs.items() if k not in removed}
-                    total = sum(probs.values())
-                    if total == 0:
-                        break
-                    probs = {k: v / total for k, v in probs.items()}
-                states = list(probs.keys())
-                p = list(probs.values())
-                state = rng.choice(states, p=p)
-        return conv / n_sim
-
-    baseline = conv_prob_from("start")
-
-    # Compute removal effect for each channel
     all_channels = set()
-    for state in transitions:
-        if state not in ("start", "conversion", "null"):
-            all_channels.add(state)
+    for row in journeys.iter_rows(named=True):
+        all_channels.update(row["path"].split(" > "))
 
     removal_effects = {}
     for ch in sorted(all_channels):
-        without = conv_prob_from("start", removed={ch})
-        effect = (baseline - without) / baseline if baseline > 0 else 0
-        removal_effects[ch] = effect
+        # Users who never touched this channel
+        without_ch = journeys.filter(
+            ~pl.col("path").str.contains(rf"\b{ch}\b")
+        )
+        conv_without = without_ch.filter(pl.col("converted") == 1).height
+        rate_without = conv_without / without_ch.height if without_ch.height > 0 else 0
+        effect = (baseline_rate - rate_without) / baseline_rate
+        removal_effects[ch] = max(0, effect)
 
     # Attribute conversions proportional to removal effect
     total_effect = sum(removal_effects.values())
     if total_effect > 0:
-        markov = {ch: round(effect / total_effect * conversion_count, 2)
+        total_conv_value = journeys.filter(pl.col("converted") == 1)["conversion_value"].sum()
+        markov = {ch: round(effect / total_effect * total_conv_value, 2)
                   for ch, effect in removal_effects.items()}
     else:
         markov = {ch: 0.0 for ch in removal_effects}
@@ -248,7 +221,7 @@ def run_all_models() -> dict:
     print("Running attribution models...")
 
     results = {
-        "first_touch": first_touch_attribution(tp),
+        "first_touch": first_touch_attribution(tp, journeys),
         "last_touch": last_touch_attribution(tp),
         "linear": linear_attribution(tp),
         "time_decay": time_decay_attribution(tp),
