@@ -110,9 +110,9 @@ make verify       # 本地质量门（lint + format + type-check）
 
 ### 3. 多触点归因（`scripts/multi_touch_attribution.py`）
 
-基于真实渠道结构（Google 5 子渠道、Meta 3 子渠道、TikTok、Organic），生成 50,000 条模拟用户旅程（转化率 3.5%），对比 6 种归因模型：
+基于真实渠道结构（Google 5 子渠道、Meta 3 子渠道、TikTok、Organic），生成 50,000 条模拟用户旅程（转化率 3.5%），对比 5 种归因模型 + 移除效应分析：
 
-| 渠道 | First-Touch | Last-Touch | Linear | **Shapley** | **Markov** |
+| 渠道 | First-Touch | Last-Touch | Linear | **Shapley** | **Removal Eff.** |
 |------|:-----------:|:----------:|:------:|:-----------:|:----------:|
 | Google Paid Search | 17.8% | 16.8% | 17.6% | **16.6%** | **19.4%** |
 | Meta Facebook | 14.6% | 16.0% | 14.3% | **14.0%** | **15.1%** |
@@ -128,7 +128,7 @@ make verify       # 本地质量门（lint + format + type-check）
 
 - **规则类模型（First/Last/Linear）**结论差异大，Last-touch 系统性高估末触点渠道（如 TikTok），First-touch 高估获客型渠道。
 - **Shapley Value** 提供了最均衡的分配，Google PMax 在 Shapley 下获得 10.0%、Markov 下获得 11.0%，均高于规则类模型——博弈论归因通过所有子集的边际贡献加权，公平分配渠道间的交互效应。
-- **Markov Chain** 的 Removal Effect 强调 Google Paid Search（19.4%）和 TikTok（9.7%），反映移除这些渠道时转化率下降最多——与 Shapley 趋势一致但数值体系不同，两者互为验证。
+- **移除效应分析** 强调 Google Paid Search（19.4%）和 TikTok（9.7%），反映移除这些渠道时转化率下降最多——与 Shapley 趋势一致但数值体系不同，两者互为验证。
 
 ### 4. 预算优化（`scripts/budget_optimizer.py`）
 

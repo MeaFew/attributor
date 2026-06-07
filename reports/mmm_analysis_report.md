@@ -72,9 +72,9 @@ Plus 6 organic/non-paid channels (Direct, Branded Search, Organic Search, Email,
 
 | Model | R2 | MAE | Notes |
 |-------|-----|-----|-------|
-| OLS | ~0.85 | - | Baseline; VIF < 5 for all channels |
-| Ridge | ~0.85 | - | Handles multicollinearity via L2 penalty |
-| Lasso | ~0.84 | - | Some channel coefficients driven to zero |
+| OLS | 0.569 | - | Baseline; VIF < 5 for all channels |
+| Ridge | 0.569 | - | Handles multicollinearity via L2 penalty |
+| Lasso | 0.569 | - | Some channel coefficients driven to zero |
 
 ### 2.3 Channel Elasticities (Ridge Model)
 

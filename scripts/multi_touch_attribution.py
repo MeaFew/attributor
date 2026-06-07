@@ -175,7 +175,16 @@ def shapley_attribution(journeys: pl.DataFrame) -> dict[str, float]:
 # ---------------------------------------------------------------------------
 
 def markov_attribution(journeys: pl.DataFrame) -> dict[str, float]:
-    """Markov chain attribution using removal effect on conversion rates."""
+    """Channel removal effect analysis (Markov-chain-inspired).
+
+    Computes attribution by measuring the drop in overall conversion rate when
+    a channel is removed from all user journeys. This is NOT a full Markov chain
+    (no transition probability matrix), but captures the same intuition:
+    channels whose removal causes the largest conversion drop get more credit.
+
+    TODO: Implement full Markov chain with transition probability matrix and
+    stationary distribution changes for proper removal effect.
+    """
     total_users = journeys.height
     total_conv = journeys.filter(pl.col("converted") == 1).height
     baseline_rate = total_conv / total_users if total_users > 0 else 0
