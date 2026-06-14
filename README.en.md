@@ -158,6 +158,7 @@ marketing-attribution-mmm/
 ├── dashboard/
 │   └── app.py                     # Streamlit three-page interactive dashboard
 ├── tests/
+│   ├── test_algorithms.py         # Algorithm unit tests: 6 attribution models (incl. Shapley correctness) + 3 MMM models + budget optimizer
 │   ├── test_preprocess.py         # Data cleaning unit tests
 │   ├── test_mmm.py                # Model output format and statistic tests
 │   └── test_attribution.py        # Attribution normalization and boundary condition tests

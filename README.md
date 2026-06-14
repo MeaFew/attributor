@@ -174,6 +174,7 @@ marketing-attribution-mmm/
 ├── dashboard/
 │   └── app.py                     # Streamlit 三页交互看板
 ├── tests/
+│   ├── test_algorithms.py         # 算法单元测试：6 归因模型（含 Shapley 数学正确性）+ MMM 三模型 + 预算优化器
 │   ├── test_preprocess.py         # 数据清洗单元测试
 │   ├── test_mmm.py                # 模型输出格式与统计量测试
 │   └── test_attribution.py        # 归因归一化与边界条件测试

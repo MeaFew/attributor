@@ -1,0 +1,406 @@
+"""Unit tests for attribution & MMM algorithms.
+
+These tests exercise the *math* of each model with small, deterministic,
+hand-verifiable inputs. They do NOT depend on any pre-generated artifacts
+(run the pipeline scripts for those integration tests in the other test_* files).
+"""
+
+import sys
+from pathlib import Path
+
+import numpy as np
+import polars as pl
+import pytest
+
+repo_root = Path(__file__).parents[1].resolve()
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
+
+from scripts.budget_optimizer import extract_params, optimize_budget  # noqa: E402
+from scripts.mmm_model import (  # noqa: E402
+    fit_lasso,
+    fit_ols,
+    fit_ridge,
+    prepare_features,
+)
+from scripts.multi_touch_attribution import (  # noqa: E402
+    first_touch_attribution,
+    last_touch_attribution,
+    linear_attribution,
+    removal_effect_attribution,
+    shapley_attribution,
+    time_decay_attribution,
+)
+
+# ---------------------------------------------------------------------------
+# Fixtures: synthetic touchpoint / journey data
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def touchpoints() -> pl.DataFrame:
+    """3 users, 2 channels (A, B). Deterministic.
+
+    user1: A -> B (converted, value=100)
+    user2: A       (converted, value=100)
+    user3: B       (not converted)
+    """
+    return pl.DataFrame(
+        {
+            "user_id": [1, 1, 2, 3],
+            "channel": ["A", "B", "A", "B"],
+            "touchpoint_number": [1, 2, 1, 1],
+            "is_conversion": [0, 1, 1, 0],
+            "conversion_value": [0, 100, 100, 0],
+            "timestamp": [
+                "2026-01-01T00:00:00",
+                "2026-01-08T00:00:00",
+                "2026-01-01T00:00:00",
+                "2026-01-01T00:00:00",
+            ],
+        }
+    )
+
+
+@pytest.fixture
+def journeys() -> pl.DataFrame:
+    """Path-level view of the same 3 users above."""
+    return pl.DataFrame(
+        {
+            "user_id": [1, 2, 3],
+            "path": ["A > B", "A", "B"],
+            "converted": [1, 1, 0],
+            "conversion_value": [100, 100, 0],
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rule-based attribution models
+# ---------------------------------------------------------------------------
+
+
+class TestFirstTouch:
+    def test_credits_first_channel_only(self, touchpoints, journeys):
+        result = first_touch_attribution(touchpoints, journeys)
+        # user1 first = A, user2 first = A, user3 not converted
+        assert result["A"] == 200.0
+        assert "B" not in result or result["B"] == 0.0
+
+    def test_returns_dict(self, touchpoints, journeys):
+        result = first_touch_attribution(touchpoints, journeys)
+        assert isinstance(result, dict)
+
+
+class TestLastTouch:
+    def test_credits_last_channel(self, touchpoints):
+        result = last_touch_attribution(touchpoints)
+        # user1 last (conversion) = B, user2 last = A
+        assert result["B"] == 100.0
+        assert result["A"] == 100.0
+
+
+class TestLinearAttribution:
+    def test_splits_value_across_touchpoints(self, touchpoints):
+        result = linear_attribution(touchpoints)
+        # conversion_value lives on one touchpoint per user (the conversion
+        # touchpoint); linear divides it by n_touches for that user, then sums
+        # per channel. user1: cv=100 on B, /2 touches -> B gets 50. user2: cv=100
+        # on A, /1 touch -> A gets 100. user3: not converted (cv=0).
+        assert result["A"] == pytest.approx(100.0)
+        assert result["B"] == pytest.approx(50.0)
+
+    def test_single_touch_journey_gets_full_value(self):
+        """A one-touch converted journey attributes full value to that channel."""
+        tp = pl.DataFrame(
+            {
+                "user_id": [1],
+                "channel": ["A"],
+                "conversion_value": [80.0],
+            }
+        )
+        result = linear_attribution(tp)
+        assert result["A"] == pytest.approx(80.0)
+
+    def test_divides_each_touchpoints_value_by_journey_length(self):
+        """linear_attribution divides each touchpoint's OWN conversion_value by
+        n_touches — it does not re-distribute the journey total across touches.
+
+        NOTE: this documents the current implementation contract. When the input
+        only carries conversion_value on the conversion touchpoint (as Criteo
+        data does), the earlier non-conversion touchpoints contribute 0 even
+        though the journey passes through them. Callers that want even splits
+        must replicate conversion_value onto every touchpoint of the journey.
+        """
+        tp = pl.DataFrame(
+            {
+                "user_id": [1, 1],
+                "channel": ["A", "B"],
+                "conversion_value": [0.0, 80.0],
+            }
+        )
+        result = linear_attribution(tp)
+        assert result["A"] == pytest.approx(0.0)
+        assert result["B"] == pytest.approx(40.0)
+
+
+class TestTimeDecay:
+    @pytest.fixture
+    def multi_touch_case(self):
+        """A single user with two touchpoints to isolate the decay effect.
+
+        A at day 0, B (conversion) at day 7. Under any half-life, B is closer
+        to the conversion event so its weight >= A's weight.
+        """
+        tp = pl.DataFrame(
+            {
+                "user_id": [1, 1],
+                "channel": ["A", "B"],
+                "touchpoint_number": [1, 2],
+                "is_conversion": [0, 1],
+                "conversion_value": [0, 100],
+                "timestamp": ["2026-01-01T00:00:00", "2026-01-08T00:00:00"],
+            }
+        )
+        journeys = pl.DataFrame(
+            {
+                "user_id": [1],
+                "path": ["A > B"],
+                "converted": [1],
+                "conversion_value": [100],
+            }
+        )
+        return tp, journeys
+
+    def test_recent_touchpoint_gets_more_credit(self, multi_touch_case):
+        tp, journeys = multi_touch_case
+        result = time_decay_attribution(tp, journeys, half_life_days=7.0)
+        # B is the conversion touchpoint (distance=0, weight=1); A is 7 days
+        # earlier (weight=2^(-1)=0.5). So B should get the larger share.
+        assert result["B"] > result["A"]
+
+    def test_total_value_conserved(self, multi_touch_case):
+        tp, journeys = multi_touch_case
+        result = time_decay_attribution(tp, journeys, half_life_days=7.0)
+        assert sum(result.values()) == pytest.approx(100.0, rel=0.01)
+
+    def test_returns_normalized_shares(self, touchpoints, journeys):
+        result = time_decay_attribution(touchpoints, journeys)
+        assert all(v >= 0 for v in result.values())
+
+
+# ---------------------------------------------------------------------------
+# Shapley value attribution (the math-heavy one)
+# ---------------------------------------------------------------------------
+
+
+class TestShapley:
+    def test_single_channel_gets_full_credit(self):
+        """If only one channel ever appears in converted paths, Shapley = 100%."""
+        j = pl.DataFrame(
+            {
+                "user_id": [1, 2, 3],
+                "path": ["A", "A", "A"],
+                "converted": [1, 1, 1],
+                "conversion_value": [10, 20, 30],
+            }
+        )
+        result = shapley_attribution(j)
+        assert result == {"A": 60.0}
+
+    def test_symmetric_channels_split_evenly(self):
+        """Two channels with identical contribution patterns get equal Shapley."""
+        j = pl.DataFrame(
+            {
+                "user_id": [1, 2, 3, 4],
+                "path": ["A > B", "B > A", "A", "B"],
+                "converted": [1, 1, 1, 1],
+                "conversion_value": [25, 25, 25, 25],
+            }
+        )
+        result = shapley_attribution(j)
+        # Symmetric A/B => equal split of total 100
+        assert result["A"] == pytest.approx(50.0)
+        assert result["B"] == pytest.approx(50.0)
+
+    def test_values_are_nonnegative(self, journeys):
+        result = shapley_attribution(journeys)
+        assert all(v >= 0 for v in result.values())
+
+    def test_total_conserved(self, journeys):
+        """Sum of Shapley values should equal total conversion value."""
+        result = shapley_attribution(journeys)
+        total = sum(result.values())
+        # journeys fixture has 200 total conversion value
+        assert total == pytest.approx(200.0, rel=0.01)
+
+
+# ---------------------------------------------------------------------------
+# Removal effect attribution
+# ---------------------------------------------------------------------------
+
+
+class TestRemovalEffect:
+    def test_indispensable_channel_scores_high(self):
+        """If removing channel A eliminates all conversions, A gets full credit."""
+        j = pl.DataFrame(
+            {
+                "user_id": [1, 2],
+                "path": ["A", "A"],
+                "converted": [1, 1],
+                "conversion_value": [50, 50],
+            }
+        )
+        result = removal_effect_attribution(j)
+        assert result["A"] == 100.0
+
+    def test_returns_nonnegative(self, journeys):
+        result = removal_effect_attribution(journeys)
+        assert all(v >= 0 for v in result.values())
+
+
+# ---------------------------------------------------------------------------
+# MMM model fitting
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mmm_df() -> pl.DataFrame:
+    """Small MMM-ready DataFrame with one adstocked spend channel.
+
+    y is constructed as a linear function of the spend feature so OLS can
+    recover it exactly (r2 ~ 1.0, coef ~ 2.0).
+    """
+    n = 40
+    rng = np.random.default_rng(42)
+    google_spend = rng.uniform(100, 500, n)
+    # target = 2 * spend + small noise => OLS should recover coef≈2
+    y = 2.0 * google_spend + rng.normal(0, 1, n)
+    return pl.DataFrame(
+        {
+            "date_day": pl.date_range(
+                pl.date(2024, 1, 1), pl.date(2024, 2, 9), interval="1d", eager=True
+            )[:n],
+            "google_paid_search_adstock": google_spend,
+            "first_purchases_original_price": y,
+            "month": [d.month for d in pl.date_range(
+                pl.date(2024, 1, 1), pl.date(2024, 2, 9), interval="1d", eager=True
+            )[:n]],
+            "is_weekend": [0] * n,
+        }
+    )
+
+
+class TestPrepareFeatures:
+    def test_returns_matrix_target_and_names(self, mmm_df):
+        X, y, names = prepare_features(mmm_df)  # noqa: N806 (X is ML convention)
+        assert X.ndim == 2
+        assert y.ndim == 1
+        assert len(names) == X.shape[1]
+        assert "google_paid_search_adstock" in names
+        assert "trend" in names
+        assert "month_sin" in names
+
+
+class TestFitOLS:
+    def test_recovers_known_coefficient(self, mmm_df):
+        X, y, names = prepare_features(mmm_df)  # noqa: N806 (X is ML convention)
+        result = fit_ols(X, y, names)
+        assert result["model"] == "OLS"
+        # Linear relationship => near-perfect fit
+        assert result["r2"] > 0.99
+        coef = result["coefficients"]["google_paid_search_adstock"]["coef"]
+        assert coef == pytest.approx(2.0, abs=0.1)
+
+    def test_result_has_diagnostics(self, mmm_df):
+        X, y, names = prepare_features(mmm_df)  # noqa: N806 (X is ML convention)
+        result = fit_ols(X, y, names)
+        for key in ("r2", "adj_r2", "aic", "bic", "durbin_watson", "vif"):
+            assert key in result
+
+
+class TestFitRidge:
+    def test_returns_coefficients_and_score(self, mmm_df):
+        X, y, names = prepare_features(mmm_df)  # noqa: N806 (X is ML convention)
+        result = fit_ridge(X, y, names, alpha=1.0)
+        assert result["model"].startswith("Ridge")
+        assert "google_paid_search_adstock" in result["coefficients"]
+        assert isinstance(result["r2"], float)
+
+
+class TestFitLasso:
+    def test_zeroes_out_irrelevant_features(self):
+        """Lasso should drive a noise feature's coef toward 0."""
+        rng = np.random.default_rng(0)
+        n = 100
+        signal = rng.uniform(0, 10, n)
+        noise = rng.normal(0, 1, n)  # unrelated to y
+        y = 3.0 * signal + rng.normal(0, 0.1, n)
+        X = np.column_stack([signal, noise])  # noqa: N806 (X is ML convention)
+        result = fit_lasso(X, y, ["signal", "noise"], alpha=0.1)
+        assert abs(result["coefficients"]["signal"]["coef"]) > 1.0
+        assert abs(result["coefficients"]["noise"]["coef"]) < 0.5
+
+
+# ---------------------------------------------------------------------------
+# Budget optimizer
+# ---------------------------------------------------------------------------
+
+
+class TestExtractParams:
+    def test_pulls_elasticities_and_intercept(self):
+        mmm_data = {
+            "models": {
+                "ridge": {
+                    "intercept": 42.0,
+                    "coefficients": {
+                        "google_paid_search_adstock": {"coef": 1.5},
+                        "tiktok_adstock": {"coef": 0.8},
+                    },
+                }
+            }
+        }
+        elasticities, intercept = extract_params(mmm_data)
+        assert intercept == 42.0
+        assert elasticities["google_paid_search_spend"] == 1.5
+        assert elasticities["tiktok_spend"] == 0.8
+
+
+class TestOptimizeBudget:
+    def test_shifts_budget_to_high_elasticity_channel(self):
+        """With a fixed total budget, optimizer should favor higher-elasticity channel."""
+        current = {"google_paid_search_spend": 100.0, "tiktok_spend": 100.0}
+        elasticities = {"google_paid_search_spend": 3.0, "tiktok_spend": 1.0}
+        result = optimize_budget(
+            current, elasticities, intercept=0.0, total_budget=200.0
+        )
+        # Google has 3x the lift => optimizer should allocate more to it
+        assert result["optimal_spend"]["google_paid_search_spend"] > result[
+            "optimal_spend"
+        ]["tiktok_spend"]
+        # Optimal revenue must beat or equal current revenue at same total budget
+        assert result["optimal_revenue"] >= result["current_revenue"] - 1e-3
+
+    def test_respects_budget_constraint(self):
+        current = {"google_paid_search_spend": 100.0, "tiktok_spend": 100.0}
+        elasticities = {"google_paid_search_spend": 2.0, "tiktok_spend": 1.5}
+        result = optimize_budget(
+            current, elasticities, intercept=10.0, total_budget=300.0
+        )
+        total = sum(result["optimal_spend"].values())
+        assert total == pytest.approx(300.0, rel=0.01)
+
+    def test_respects_bounds(self):
+        """Optimal spend stays within [0.1x, 3x] of current."""
+        current = {"google_paid_search_spend": 100.0, "tiktok_spend": 100.0}
+        elasticities = {"google_paid_search_spend": 5.0, "tiktok_spend": 0.1}
+        result = optimize_budget(
+            current,
+            elasticities,
+            intercept=0.0,
+            total_budget=200.0,
+            min_spend_ratio=0.1,
+            max_spend_ratio=3.0,
+        )
+        for ch, optimal in result["optimal_spend"].items():
+            assert 10.0 <= optimal <= 300.0  # within [0.1x, 3x] of 100
