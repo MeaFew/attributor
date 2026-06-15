@@ -1,4 +1,4 @@
-﻿name: CI
+name: CI
 
 on:
   push:
@@ -11,30 +11,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
-          pip install ruff
-
-      - name: Lint with ruff
-        run: |
-          ruff check scripts/ dashboard/ --ignore E501,F401,E402
+      - run: pip install ruff
+      - run: ruff check scripts/ dashboard/ tests/ --ignore E501,E402,F401,N803,N806,F401,N803,N806
+      - run: ruff format --check scripts/ dashboard/ tests/
 
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
       - name: Generate mock data for tests
         run: |
           mkdir -p data/processed/models
@@ -74,16 +65,11 @@ jobs:
           }
           json.dump(data, open('data/processed/models/budget_optimization.json', 'w'), indent=2)
           "
-      - name: Run tests
-        run: pytest tests/ -v
+      - run: pytest tests/ -v
 
   docker-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build Docker image
-        run: docker build -t marketing-attribution-mmm .
-
-      - name: Smoke test
-        run: docker run --rm marketing-attribution-mmm python -c "import streamlit; print('OK')"
+      - run: docker build -t marketing-attribution-mmm .
+      - run: docker run --rm marketing-attribution-mmm python -c "import streamlit; print('OK')"

@@ -283,9 +283,12 @@ def mmm_df() -> pl.DataFrame:
             )[:n],
             "google_paid_search_adstock": google_spend,
             "first_purchases_original_price": y,
-            "month": [d.month for d in pl.date_range(
-                pl.date(2024, 1, 1), pl.date(2024, 2, 9), interval="1d", eager=True
-            )[:n]],
+            "month": [
+                d.month
+                for d in pl.date_range(
+                    pl.date(2024, 1, 1), pl.date(2024, 2, 9), interval="1d", eager=True
+                )[:n]
+            ],
             "is_weekend": [0] * n,
         }
     )
@@ -371,22 +374,19 @@ class TestOptimizeBudget:
         """With a fixed total budget, optimizer should favor higher-elasticity channel."""
         current = {"google_paid_search_spend": 100.0, "tiktok_spend": 100.0}
         elasticities = {"google_paid_search_spend": 3.0, "tiktok_spend": 1.0}
-        result = optimize_budget(
-            current, elasticities, intercept=0.0, total_budget=200.0
-        )
+        result = optimize_budget(current, elasticities, intercept=0.0, total_budget=200.0)
         # Google has 3x the lift => optimizer should allocate more to it
-        assert result["optimal_spend"]["google_paid_search_spend"] > result[
-            "optimal_spend"
-        ]["tiktok_spend"]
+        assert (
+            result["optimal_spend"]["google_paid_search_spend"]
+            > result["optimal_spend"]["tiktok_spend"]
+        )
         # Optimal revenue must beat or equal current revenue at same total budget
         assert result["optimal_revenue"] >= result["current_revenue"] - 1e-3
 
     def test_respects_budget_constraint(self):
         current = {"google_paid_search_spend": 100.0, "tiktok_spend": 100.0}
         elasticities = {"google_paid_search_spend": 2.0, "tiktok_spend": 1.5}
-        result = optimize_budget(
-            current, elasticities, intercept=10.0, total_budget=300.0
-        )
+        result = optimize_budget(current, elasticities, intercept=10.0, total_budget=300.0)
         total = sum(result["optimal_spend"].values())
         assert total == pytest.approx(300.0, rel=0.01)
 

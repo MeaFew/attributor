@@ -33,6 +33,18 @@ dashboard:
 test:
 	pytest tests/ -v
 
+lint:
+	ruff check scripts/ dashboard/ tests/ --ignore E501,E402,F401,N803,N806,F401,N803,N806
+
+format:
+	ruff format scripts/ dashboard/ tests/
+
+format-check:
+	ruff format --check scripts/ dashboard/ tests/
+
+audit:
+	python scripts/audit_consistency.py
+
 verify: lint format-check test audit
 
 all: preprocess mmm attribution optimize
@@ -41,20 +53,7 @@ clean:
 	rm -rf data/processed/*.parquet
 	rm -rf data/processed/*.duckdb
 	rm -rf reports/images/*.png
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-
-# === Quality gates (extended) ===
-
-lint:
-	ruff check scripts/ dashboard/ tests/ --ignore E501,E402,N803,N806
-
-# === Quality gates (extended) ===
-
-format:
-	ruff format scripts/ dashboard/
-
-format-check:
-	ruff format --check scripts/ dashboard/
-
-audit:
-	python scripts/audit_consistency.py
+	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	find . -type f -name "*.pyc" -delete 2>/dev/null || true
+	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true

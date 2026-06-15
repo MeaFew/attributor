@@ -125,7 +125,7 @@ if page == "Attribution Comparison":
 
     # Prepare data for stacked bar chart
     model_names = list(attr.keys())
-    channels = sorted(set(ch for v in attr.values() for ch in v.keys()))
+    channels = sorted(set(ch for v in attr.values() for ch in v))
 
     fig = go.Figure()
     for model in model_names:

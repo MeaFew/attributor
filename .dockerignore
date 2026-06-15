@@ -1,28 +1,32 @@
-﻿# Data
-data/raw/*.csv
-data/raw/*.tsv
-data/processed/*.parquet
+.git
+.gitignore
 
-# Python
 __pycache__/
+*.py[cod]
 *.pyc
+.pytest_cache/
+.ruff_cache/
 .venv/
 venv/
+env/
+.env
 
-# Jupyter
 .ipynb_checkpoints/
 
-# IDE
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# OS
 .DS_Store
 Thumbs.db
 
-# Outputs
-reports/images/
+data/
 models/
+reports/
+images/
+*.duckdb
+*.db
+*.zip
 
-# WorkBuddy
-.workbuddy/
+tests/

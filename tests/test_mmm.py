@@ -1,4 +1,5 @@
 """Unit tests for MMM model."""
+
 import json
 import sys
 from pathlib import Path
