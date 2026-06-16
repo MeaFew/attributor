@@ -13,6 +13,10 @@ import re
 import sys
 from pathlib import Path
 
+# Defensive: avoid UnicodeEncodeError on Windows consoles using GBK code page.
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 
 def read_readme_metric(readme_path: Path, metric_name: str) -> float | None:
     """Extract a numeric metric from README.md.
@@ -43,14 +47,14 @@ def main():
     passed = 0
     failed = 0
 
-    # --- Check 1: R² in README matches mmm_results.json ---
+    # --- Check 1: R^2 in README matches mmm_results.json ---
     mmm_path = root / "data" / "processed" / "models" / "mmm_results.json"
     if mmm_path.exists():
         with open(mmm_path) as f:
             mmm = json.load(f)
         r2_actual = round(mmm["models"]["ridge"]["r2"], 3)
 
-        # Extract R² from README benchmark table Ridge row
+        # Extract R^2 from README benchmark table Ridge row
         readme_text = readme.read_text(encoding="utf-8")
         # Match the Ridge row in the benchmark/result table: | **Ridge** | 0.569 | ...
         r2_match = re.search(r"\|\s*\*\*?Ridge\*\*?\s*\|\s*(\d+\.\d+)", readme_text)
@@ -59,7 +63,7 @@ def main():
             r2_readme_r = round(r2_readme, 3)
             ok = check(
                 abs(r2_readme_r - r2_actual) < 0.01,
-                f"R² (Ridge): README={r2_readme_r:.3f}, actual (mmm_results.json)={r2_actual:.3f}",
+                f"R^2 (Ridge): README={r2_readme_r:.3f}, actual (mmm_results.json)={r2_actual:.3f}",
             )
             if ok:
                 passed += 1
@@ -67,7 +71,7 @@ def main():
                 failed += 1
         else:
             failed += 1
-            check(False, "R² (Ridge): could not extract from README.md")
+            check(False, "R^2 (Ridge): could not extract from README.md")
     else:
         print(f"  SKIP: mmm_results.json not found at {mmm_path}")
         print("         Run 'python scripts/mmm_model.py' first.")

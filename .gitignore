@@ -74,6 +74,7 @@ reports/*.json
 reports/*.md
 reports/*.html
 reports/checkpoints/
+reports/images/
 images/*.png
 images/*.jpg
 !models/.gitkeep

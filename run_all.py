@@ -1,12 +1,16 @@
-﻿"""Windows-compatible one-shot pipeline runner.
+"""Windows-compatible one-shot pipeline runner.
 
 Replaces `make all` on systems without GNU Make (e.g., Windows).
 Usage: python run_all.py [--output PREFIX]
 """
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+# Force UTF-8 mode for child processes on Windows before any heavy imports.
+os.environ.setdefault("PYTHONUTF8", "1")
 
 
 def run(cmd: str, cwd: Path | None = None):
