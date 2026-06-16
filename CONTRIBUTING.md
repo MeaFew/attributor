@@ -6,8 +6,8 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/MeaFew/marketing-attribution-mmm.git
-cd marketing-attribution-mmm
+git clone https://github.com/MeaFew/attributor.git
+cd attributor
 
 # 2. 创建虚拟环境 (推荐 Python 3.12)
 python -m venv .venv

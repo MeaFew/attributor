@@ -4,7 +4,7 @@
     <b>A full-stack marketing effectiveness evaluation and budget optimization system — from macro MMM to micro multi-touch attribution</b>
   </p>
   <p align="center">
-    <a href="https://github.com/MeaFew/marketing-attribution-mmm/actions"><img src="https://github.com/MeaFew/marketing-attribution-mmm/workflows/CI/badge.svg" alt="CI"></a>
+    <a href="https://github.com/MeaFew/attributor/actions"><img src="https://github.com/MeaFew/attributor/workflows/CI/badge.svg" alt="CI"></a>
     <img src="https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white" alt="Python">
     <img src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" alt="Ruff">
     <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
@@ -56,8 +56,8 @@ flowchart LR
 ## Quick Start
 
 ```bash
-git clone https://github.com/MeaFew/marketing-attribution-mmm.git
-cd marketing-attribution-mmm
+git clone https://github.com/MeaFew/attributor.git
+cd attributor
 
 # 1. Download MMM dataset (GitHub Releases, ~31MB)
 bash download_data.sh
@@ -145,7 +145,7 @@ Using Ridge MMM coefficients and intercept as a linear response function, SLSQP 
 ## Project Structure
 
 ```
-marketing-attribution-mmm/
+attributor/
 ├── scripts/
 │   ├── preprocess.py              # Polars ETL: nulls, thousand-separator handling, adstock, derived metrics
 │   ├── mmm_model.py               # OLS + Ridge + Lasso, VIF / Durbin-Watson / residual diagnostics
@@ -191,9 +191,9 @@ marketing-attribution-mmm/
 
 | Project | Repo | Description |
 |---------|------|-------------|
-| E-commerce User Analytics | [MeaFew/ecommerce-user-analytics](https://github.com/MeaFew/ecommerce-user-analytics) | 29M real user behavior records, 10 analytical modules |
-| Credit Risk Scoring | [MeaFew/credit-risk-scoring](https://github.com/MeaFew/credit-risk-scoring) | WOE/IV + XGBoost/LightGBM + SHAP interpretability |
-| Multivariate Time Series | [MeaFew/multivariate-timeseries-forecasting](https://github.com/MeaFew/multivariate-timeseries-forecasting) | LSTM / Transformer / XGBoost forecasting benchmarks |
+| E-commerce User Analytics | [MeaFew/shoplytics](https://github.com/MeaFew/shoplytics) | 29M real user behavior records, 10 analytical modules |
+| Credit Risk Scoring | [MeaFew/riskscore](https://github.com/MeaFew/riskscore) | WOE/IV + XGBoost/LightGBM + SHAP interpretability |
+| Multivariate Time Series | [MeaFew/foresight](https://github.com/MeaFew/foresight) | LSTM / Transformer / XGBoost forecasting benchmarks |
 
 ## License
 

@@ -71,5 +71,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t marketing-attribution-mmm .
-      - run: docker run --rm marketing-attribution-mmm python -c "import streamlit; print('OK')"
+      - run: docker build -t attributor .
+      - run: docker run --rm attributor python -c "import streamlit; print('OK')"

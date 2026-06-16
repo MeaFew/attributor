@@ -4,7 +4,7 @@
     <b>从宏观 MMM 到微观多触点归因的全链路营销效果评估与预算优化系统</b>
   </p>
   <p align="center">
-    <a href="https://github.com/MeaFew/marketing-attribution-mmm/actions"><img src="https://github.com/MeaFew/marketing-attribution-mmm/workflows/CI/badge.svg" alt="CI"></a>
+    <a href="https://github.com/MeaFew/attributor/actions"><img src="https://github.com/MeaFew/attributor/workflows/CI/badge.svg" alt="CI"></a>
     <img src="https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white" alt="Python">
     <img src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" alt="Ruff">
     <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
@@ -56,8 +56,8 @@ flowchart LR
 ## 快速开始
 
 ```bash
-git clone https://github.com/MeaFew/marketing-attribution-mmm.git
-cd marketing-attribution-mmm
+git clone https://github.com/MeaFew/attributor.git
+cd attributor
 
 # 1. 下载 MMM 数据集（GitHub Releases，约 31MB）
 bash download_data.sh
@@ -161,7 +161,7 @@ make verify       # 本地质量门（lint + format + test + audit）
 ## 项目结构
 
 ```
-marketing-attribution-mmm/
+attributor/
 ├── scripts/
 │   ├── preprocess.py              # Polars ETL：缺失值、千分位处理、adstock、衍生指标
 │   ├── mmm_model.py               # OLS + Ridge + Lasso，VIF / Durbin-Watson / 残差诊断
@@ -207,9 +207,9 @@ marketing-attribution-mmm/
 
 | 项目 | 仓库 | 简介 |
 |------|------|------|
-| 电商用户行为分析 | [MeaFew/ecommerce-user-analytics](https://github.com/MeaFew/ecommerce-user-analytics) | 2,900万条真实用户行为数据，10大分析模块 |
-| 信用风险评分 | [MeaFew/credit-risk-scoring](https://github.com/MeaFew/credit-risk-scoring) | WOE/IV + XGBoost/LightGBM + SHAP 可解释性 |
-| 多元时序预测 | [MeaFew/multivariate-timeseries-forecasting](https://github.com/MeaFew/multivariate-timeseries-forecasting) | LSTM / Transformer / XGBoost 时序预测对比 |
+| 电商用户行为分析 | [MeaFew/shoplytics](https://github.com/MeaFew/shoplytics) | 2,900万条真实用户行为数据，10大分析模块 |
+| 信用风险评分 | [MeaFew/riskscore](https://github.com/MeaFew/riskscore) | WOE/IV + XGBoost/LightGBM + SHAP 可解释性 |
+| 多元时序预测 | [MeaFew/foresight](https://github.com/MeaFew/foresight) | LSTM / Transformer / XGBoost 时序预测对比 |
 
 ## 许可证
 
