@@ -6,7 +6,6 @@ import math
 import re
 import sys
 from collections import defaultdict
-from itertools import combinations
 from pathlib import Path
 
 import polars as pl
@@ -50,29 +49,33 @@ def load_data(
 # ---------------------------------------------------------------------------
 
 
+def _channel_share(df: pl.DataFrame, value_col: str = "attributed") -> dict[str, float]:
+    """Aggregate per-channel attribution and return a {channel: value} dict.
+
+    The 4-5 line `group_by("channel").agg(sum).sort(descending) -> dict`
+    epilogue was repeated in every attribution model; centralize it here.
+    """
+    result = (
+        df.group_by("channel")
+        .agg(pl.sum(value_col).alias("attributed"))
+        .sort("attributed", descending=True)
+    )
+    return {row["channel"]: row["attributed"] for row in result.iter_rows(named=True)}
+
+
 def first_touch_attribution(tp: pl.DataFrame, journeys: pl.DataFrame) -> dict[str, float]:
     """Attribute 100% to the first touchpoint."""
     # Get conversion value per user from journeys
     conv_values = journeys.select(["user_id", "conversion_value"])
     first = tp.filter(pl.col("touchpoint_number") == 1).drop("conversion_value")
     first = first.join(conv_values, on="user_id")
-    result = (
-        first.group_by("channel")
-        .agg(pl.sum("conversion_value").alias("attributed"))
-        .sort("attributed", descending=True)
-    )
-    return {row["channel"]: row["attributed"] for row in result.iter_rows(named=True)}
+    return _channel_share(first, "conversion_value")
 
 
 def last_touch_attribution(tp: pl.DataFrame) -> dict[str, float]:
     """Attribute 100% to the last touchpoint (conversion touchpoint)."""
     last = tp.filter(pl.col("is_conversion") == 1)
-    result = (
-        last.group_by("channel")
-        .agg(pl.sum("conversion_value").alias("attributed"))
-        .sort("attributed", descending=True)
-    )
-    return {row["channel"]: row["attributed"] for row in result.iter_rows(named=True)}
+    return _channel_share(last, "conversion_value")
 
 
 def linear_attribution(tp: pl.DataFrame) -> dict[str, float]:
@@ -82,12 +85,7 @@ def linear_attribution(tp: pl.DataFrame) -> dict[str, float]:
     tp = tp.join(counts, on="user_id")
     tp = tp.with_columns(pl.col("conversion_value") / pl.col("n_touches"))
 
-    result = (
-        tp.group_by("channel")
-        .agg(pl.sum("conversion_value").alias("attributed"))
-        .sort("attributed", descending=True)
-    )
-    return {row["channel"]: row["attributed"] for row in result.iter_rows(named=True)}
+    return _channel_share(tp, "conversion_value")
 
 
 def time_decay_attribution(
@@ -137,12 +135,7 @@ def time_decay_attribution(
     # Attribute: weight/total_weight * user's total conversion_value
     tp = tp.with_columns(pl.col("weight") / pl.col("total_weight") * pl.col("conversion_value"))
 
-    result = (
-        tp.group_by("channel")
-        .agg(pl.sum("weight").alias("attributed"))
-        .sort("attributed", descending=True)
-    )
-    return {row["channel"]: row["attributed"] for row in result.iter_rows(named=True)}
+    return _channel_share(tp, "weight")
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +148,10 @@ def shapley_attribution(journeys: pl.DataFrame) -> dict[str, float]:
 
     Uses the standard definition: v(S) = total conversion value of paths whose
     channel set is a SUBSET of S. Larger S means more paths are included.
+
+    Implementation note: the per-subset v(S) is computed with a subset-zeta
+    transform (sum-over-subsets DP) in O(2^n * n) instead of the naive
+    O(2^n * m) double loop, and factorials are precomputed once.
     """
     # Build exact conversion value per channel set
     v_exact = defaultdict(float)
@@ -171,49 +168,56 @@ def shapley_attribution(journeys: pl.DataFrame) -> dict[str, float]:
     if n == 0:
         return {}
 
-    # Enumerate all subsets and compute v(S) = sum of v_exact for all subsets of S
-    all_subsets = []
-    for r in range(0, n + 1):
-        all_subsets.extend(combinations(all_channels, r))
+    # Map channels to bit indices so subsets become integer bitmasks.
+    ch_to_bit = {ch: i for i, ch in enumerate(all_channels)}
 
-    v = {}
-    for subset in all_subsets:
-        subset_set = frozenset(subset)
-        total = 0.0
-        for exact_set, val in v_exact.items():
-            if exact_set.issubset(subset_set):
-                total += val
-        v[subset_set] = total
+    # Seed v[S] with the exact values, then propagate each value to all
+    # supersets via the sum-over-subsets (zeta) transform.
+    size = 1 << n
+    v = [0.0] * size
+    for cs, val in v_exact.items():
+        mask = 0
+        for ch in cs:
+            mask |= 1 << ch_to_bit[ch]
+        v[mask] += val
+    for i in range(n):
+        bit = 1 << i
+        for mask in range(size):
+            if mask & bit:
+                v[mask] += v[mask ^ bit]
 
-    # Compute Shapley values
+    # Precompute factorials once (was recomputed inside the hot loop before).
+    fact = [math.factorial(k) for k in range(n + 1)]
+
+    # Compute Shapley values: for each channel c, sum the weighted marginal
+    # contribution of adding c to every subset S not containing c.
     shapley = {ch: 0.0 for ch in all_channels}
     for ch in all_channels:
-        for subset in all_subsets:
-            if ch in subset:
+        c_bit = 1 << ch_to_bit[ch]
+        for mask in range(size):
+            if mask & c_bit:
                 continue
-            s = len(subset)
-            subset_set = frozenset(subset)
-            subset_with_ch = frozenset(subset + (ch,))
-            weight = math.factorial(s) * math.factorial(n - s - 1) / math.factorial(n)
-            marginal = v.get(subset_with_ch, 0) - v.get(subset_set, 0)
+            s = bin(mask).count("1")
+            weight = fact[s] * fact[n - s - 1] / fact[n]
+            marginal = v[mask | c_bit] - v[mask]
             shapley[ch] += marginal * weight
 
     # Check for negative Shapley values and warn
-    negative_channels = [(k, v) for k, v in shapley.items() if v < 0]
+    negative_channels = [(k, val) for k, val in shapley.items() if val < 0]
     if negative_channels:
-        names = ", ".join(f"{k} ({v:.2f})" for k, v in negative_channels)
+        names = ", ".join(f"{k} ({val:.2f})" for k, val in negative_channels)
         print(
             f"  Warning: {len(negative_channels)} channel(s) had negative Shapley values "
             f"and were clipped to 0: {names}"
         )
     # Ensure non-negative
-    shapley = {k: max(0.0, v) for k, v in shapley.items()}
+    shapley = {k: max(0.0, val) for k, val in shapley.items()}
 
     # Normalize to total conversion value
     total_conv = sum(v_exact.values())
     total_shapley = sum(shapley.values())
     if total_shapley > 0:
-        shapley = {k: round(v / total_shapley * total_conv, 2) for k, v in shapley.items()}
+        shapley = {k: round(val / total_shapley * total_conv, 2) for k, val in shapley.items()}
 
     return dict(sorted(shapley.items(), key=lambda x: x[1], reverse=True))
 
@@ -234,6 +238,10 @@ def removal_effect_attribution(journeys: pl.DataFrame) -> dict[str, float]:
     (no transition probability matrix). The name reflects the underlying
     intuition: measure each channel's contribution by observing what happens
     when it is removed.
+
+    Implementation: a one-hot presence column is built once per channel, then a
+    single pass computes (converted, total) counts per channel — avoiding the
+    previous O(N * channels) pattern of one full regex scan per channel.
     """
     total_users = journeys.height
     total_conv = journeys.filter(pl.col("converted") == 1).height
@@ -245,13 +253,25 @@ def removal_effect_attribution(journeys: pl.DataFrame) -> dict[str, float]:
     all_channels = set()
     for row in journeys.iter_rows(named=True):
         all_channels.update(row["path"].split(" > "))
+    all_channels = sorted(all_channels)
+
+    # Build one-hot presence columns in a single with_columns call, then
+    # compute per-channel (users-without, conversions-without) via aggregation.
+    # `present_<ch>` is 1 when the channel appears in the journey path.
+    present_cols = []
+    exprs = []
+    for ch in all_channels:
+        col = f"_present_{ch}"
+        present_cols.append(col)
+        exprs.append(pl.col("path").str.contains(rf"\b{re.escape(ch)}\b").cast(pl.Int8).alias(col))
+    enriched = journeys.with_columns(exprs)
 
     removal_effects = {}
-    for ch in sorted(all_channels):
-        # Users who never touched this channel
-        without_ch = journeys.filter(~pl.col("path").str.contains(rf"\b{re.escape(ch)}\b"))
-        conv_without = without_ch.filter(pl.col("converted") == 1).height
-        rate_without = conv_without / without_ch.height if without_ch.height > 0 else 0
+    for ch, col in zip(all_channels, present_cols):
+        without = enriched.filter(pl.col(col) == 0)
+        n_without = without.height
+        conv_without = without.filter(pl.col("converted") == 1).height
+        rate_without = conv_without / n_without if n_without > 0 else 0
         effect = (baseline_rate - rate_without) / baseline_rate
         removal_effects[ch] = max(0, effect)
 
