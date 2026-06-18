@@ -68,7 +68,8 @@ bash download_data.sh
 
 # 安装依赖并运行
 make setup        # 创建虚拟环境 + 安装依赖
-make all          # 运行完整管线：清洗 → MMM → 归因 → 优化
+make all
+# Windows (无 GNU Make): python run_all.py          # 运行完整管线：清洗 → MMM → 归因 → 优化
 make dashboard    # 启动 Streamlit 交互看板
 make verify       # 本地质量门（lint + format + test + audit）
 ```
@@ -150,11 +151,11 @@ make verify       # 本地质量门（lint + format + test + audit）
 | 场景 | 总预算 | 预测 Revenue | 提升幅度 |
 |------|--------|-------------|---------|
 | 当前分配（Baseline） | 100% | 基准 | — |
-| **重新优化分配** | 100% | **+132.2%** | 不改变总预算，仅调整比例 |
-| 预算 +10% + 优化 | 110% | +133.6% | 增量预算优先投入高 ROI 渠道 |
-| 预算 +20% + 优化 | 120% | +134.9% | 边际收益递减效应开始显现 |
+| **重新优化分配** | 100% | **+1.8%** | 不改变总预算，仅调整比例 |
+| 预算 +10% + 优化 | 110% | +2.0% | 增量预算优先投入高 ROI 渠道 |
+| 预算 +20% + 优化 | 120% | +2.1% | 边际收益递减效应开始显现 |
 
-> **业务启示**：在不增加总预算的前提下，仅通过数据驱动的重新分配即可实现 revenue 翻倍——这对预算受限的中小型品牌尤为关键。
+> **业务启示**：在不增加总预算的前提下，仅通过数据驱动的重新分配即可获得约 2% 的 revenue 提升。该框架可扩展至更丰富的特征（价格、促销、竞品）以提升优化空间。
 
 ---
 
@@ -211,6 +212,7 @@ attributor/
 | 信用风险评分 | [MeaFew/riskscore](https://github.com/MeaFew/riskscore) | WOE/IV + XGBoost/LightGBM + SHAP 可解释性 |
 | 多元时序预测 | [MeaFew/foresight](https://github.com/MeaFew/foresight) | LSTM / Transformer / XGBoost 时序预测对比 |
 
+| 图神经网络反欺诈 | [MeaFew/graphguard](https://github.com/MeaFew/graphguard) | 图神经网络非法交易检测 |
 ## 许可证
 
 代码采用 MIT License。数据集来源于 figshare 公开发布的 Conjura MMM Dataset，遵循其使用条款。

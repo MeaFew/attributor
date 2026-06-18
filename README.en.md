@@ -134,11 +134,11 @@ Using Ridge MMM coefficients and intercept as a linear response function, SLSQP 
 | Scenario | Total Budget | Predicted Revenue | Uplift |
 |----------|-------------|-------------------|--------|
 | Current Allocation (Baseline) | 100% | Baseline | — |
-| **Re-optimized Allocation** | 100% | **+132.2%** | Same total budget, reallocated proportions only |
-| Budget +10% + optimization | 110% | +133.6% | Incremental budget prioritized to high-ROI channels |
-| Budget +20% + optimization | 120% | +134.9% | Diminishing marginal returns begin to emerge |
+| **Re-optimized Allocation** | 100% | **+1.8%** | Same total budget, reallocated proportions only |
+| Budget +10% + optimization | 110% | +2.0% | Incremental budget prioritized to high-ROI channels |
+| Budget +20% + optimization | 120% | +2.1% | Diminishing marginal returns begin to emerge |
 
-> **Business Insight**: Without increasing total budget, data-driven reallocation alone can double revenue — especially critical for budget-constrained mid-size brands.
+> **Business Insight**: Without increasing total budget, data-driven reallocation alone yields ~2% revenue uplift — especially critical for budget-constrained mid-size brands.
 
 ---
 
@@ -194,6 +194,7 @@ attributor/
 | E-commerce User Analytics | [MeaFew/shoplytics](https://github.com/MeaFew/shoplytics) | 29M real user behavior records, 10 analytical modules |
 | Credit Risk Scoring | [MeaFew/riskscore](https://github.com/MeaFew/riskscore) | WOE/IV + XGBoost/LightGBM + SHAP interpretability |
 | Multivariate Time Series | [MeaFew/foresight](https://github.com/MeaFew/foresight) | LSTM / Transformer / XGBoost forecasting benchmarks |
+| Graph Fraud Detection | [MeaFew/graphguard](https://github.com/MeaFew/graphguard) | GNN illicit transaction detection (Elliptic) |
 
 ## License
 
