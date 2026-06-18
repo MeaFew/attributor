@@ -18,19 +18,6 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 
-def read_readme_metric(readme_path: Path, metric_name: str) -> float | None:
-    """Extract a numeric metric from README.md.
-
-    Looks for patterns like `| **Metric Name** | **0.123** |`
-    or `**Metric Name = 0.123**`.
-    """
-    text = readme_path.read_text(encoding="utf-8")
-    pattern = rf"\*\*{re.escape(metric_name)}\*\*.*?(\d+\.\d+)"
-    match = re.search(pattern, text)
-    if match:
-        return float(match.group(1))
-    return None
-
 
 def check(condition: bool, msg: str) -> bool:
     """Assert-like check that prints pass/fail."""
