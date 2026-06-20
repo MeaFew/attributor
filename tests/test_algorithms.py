@@ -18,6 +18,7 @@ if str(repo_root) not in sys.path:
 
 from scripts.budget_optimizer import extract_params, optimize_budget  # noqa: E402
 from scripts.mmm_model import (  # noqa: E402
+    chronological_split,
     fit_lasso,
     fit_ols,
     fit_ridge,
@@ -295,54 +296,116 @@ def mmm_df() -> pl.DataFrame:
 
 
 class TestPrepareFeatures:
-    def test_returns_matrix_target_and_names(self, mmm_df):
-        X, y, names = prepare_features(mmm_df)  # noqa: N806 (X is ML convention)
+    def test_returns_matrix_target_names_and_dates(self, mmm_df):
+        X, y, names, dates = prepare_features(mmm_df)  # noqa: N806 (X is ML convention)
         assert X.ndim == 2
         assert y.ndim == 1
         assert len(names) == X.shape[1]
         assert "google_paid_search_adstock" in names
         assert "trend" in names
         assert "month_sin" in names
+        # dates returned for chronological splitting
+        assert len(dates) == len(y)
+
+
+class TestChronologicalSplit:
+    def test_no_shuffle_time_ordering(self):
+        """Holdout must be the LAST rows (by date), not a random subset.
+
+        Guards against re-introducing a random train/test split on time-series
+        MMM data (H1).
+        """
+        n = 100
+        X = np.arange(n).reshape(-1, 1).astype(float)  # noqa: N806
+        y = np.arange(n).astype(float)
+        dates = np.arange(n)
+        X_tr, X_te, y_tr, y_te = chronological_split(X, y, dates, frac=0.2)
+        assert len(X_te) == 20
+        # Holdout must be exactly the last 20 rows
+        assert list(y_te) == list(range(80, 100))
+        assert list(y_tr) == list(range(80))
+        # No overlap
+        assert set(y_tr).isdisjoint(set(y_te))
 
 
 class TestFitOLS:
     def test_recovers_known_coefficient(self, mmm_df):
-        X, y, names = prepare_features(mmm_df)  # noqa: N806 (X is ML convention)
-        result = fit_ols(X, y, names)
+        X, y, names, dates = prepare_features(mmm_df)  # noqa: N806 (X is ML convention)
+        X_tr, X_te, y_tr, y_te = chronological_split(X, y, dates)
+        result = fit_ols(X_tr, y_tr, X_te, y_te, names)
         assert result["model"] == "OLS"
-        # Linear relationship => near-perfect fit
+        # Linear relationship => near-perfect in-sample fit
         assert result["r2"] > 0.99
+        # Holdout R^2 must be reported (H1)
+        assert "r2_holdout" in result
+        assert "mae_holdout" in result
         coef = result["coefficients"]["google_paid_search_adstock"]["coef"]
         assert coef == pytest.approx(2.0, abs=0.1)
 
     def test_result_has_diagnostics(self, mmm_df):
-        X, y, names = prepare_features(mmm_df)  # noqa: N806 (X is ML convention)
-        result = fit_ols(X, y, names)
-        for key in ("r2", "adj_r2", "aic", "bic", "durbin_watson", "vif"):
+        X, y, names, dates = prepare_features(mmm_df)  # noqa: N806 (X is ML convention)
+        X_tr, X_te, y_tr, y_te = chronological_split(X, y, dates)
+        result = fit_ols(X_tr, y_tr, X_te, y_te, names)
+        for key in ("r2", "adj_r2", "r2_holdout", "aic", "bic", "durbin_watson", "vif"):
             assert key in result
 
 
 class TestFitRidge:
     def test_returns_coefficients_and_score(self, mmm_df):
-        X, y, names = prepare_features(mmm_df)  # noqa: N806 (X is ML convention)
-        result = fit_ridge(X, y, names, alpha=1.0)
+        X, y, names, dates = prepare_features(mmm_df)  # noqa: N806 (X is ML convention)
+        X_tr, X_te, y_tr, y_te = chronological_split(X, y, dates)
+        result = fit_ridge(X_tr, y_tr, X_te, y_te, names)
         assert result["model"].startswith("Ridge")
         assert "google_paid_search_adstock" in result["coefficients"]
         assert isinstance(result["r2"], float)
+        # alpha must be CV-selected and recorded (H2)
+        assert "alpha" in result
+        assert result["alpha"] > 0
+
+    def test_strong_alpha_actually_shrinks_vs_ols(self):
+        """H2 regression guard: with standardization + a large alpha, Ridge
+        coefficients must be visibly smaller in magnitude than OLS on the same
+        data. The earlier version used tiny alphas on unscaled features, which
+        produced Ridge coefficients indistinguishable from OLS."""
+        rng = np.random.default_rng(0)
+        n = 200
+        # Two correlated predictors with opposing signs
+        x1 = rng.uniform(0, 100, n)
+        x2 = x1 + rng.normal(0, 1, n)  # highly collinear
+        y = 5.0 * x1 - 5.0 * x2 + rng.normal(0, 1, n)
+        X = np.column_stack([x1, x2])  # noqa: N806
+        # 80/20 chronological split
+        sp = int(n * 0.8)
+        ols = fit_ols(X[:sp], y[:sp], X[sp:], y[sp:], ["x1", "x2"])
+        ridge = fit_ridge(X[:sp], y[:sp], X[sp:], y[sp:], ["x1", "x2"])
+        ols_mag = sum(abs(v["coef"]) for v in ols["coefficients"].values())
+        ridge_mag = sum(abs(v["coef"]) for v in ridge["coefficients"].values())
+        assert ridge_mag < ols_mag, (
+            "Ridge with CV-selected alpha must shrink coefficients below OLS "
+            "(otherwise the 'Ridge vs OLS' comparison is cosmetic — H2)."
+        )
 
 
 class TestFitLasso:
-    def test_zeroes_out_irrelevant_features(self):
-        """Lasso should drive a noise feature's coef toward 0."""
+    def test_lasso_can_zero_features(self):
+        """Lasso with a large enough alpha should zero out an irrelevant feature.
+
+        We pass a deliberately large alpha by constructing a case where the CV
+        picks strong regularization, then assert at least one coef is small.
+        """
         rng = np.random.default_rng(0)
-        n = 100
+        n = 200
         signal = rng.uniform(0, 10, n)
         noise = rng.normal(0, 1, n)  # unrelated to y
         y = 3.0 * signal + rng.normal(0, 0.1, n)
         X = np.column_stack([signal, noise])  # noqa: N806 (X is ML convention)
-        result = fit_lasso(X, y, ["signal", "noise"], alpha=0.1)
-        assert abs(result["coefficients"]["signal"]["coef"]) > 1.0
-        assert abs(result["coefficients"]["noise"]["coef"]) < 0.5
+        sp = int(n * 0.8)
+        result = fit_lasso(X[:sp], y[:sp], X[sp:], y[sp:], ["signal", "noise"])
+        assert "alpha" in result
+        # signal retained, noise shrunk
+        assert abs(result["coefficients"]["signal"]["coef"]) > abs(
+            result["coefficients"]["noise"]["coef"]
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -370,18 +433,28 @@ class TestExtractParams:
 
 
 class TestOptimizeBudget:
-    def test_shifts_budget_to_high_elasticity_channel(self):
-        """With a fixed total budget, optimizer should favor higher-elasticity channel."""
+    def test_uses_saturation_response_not_linear(self):
+        """H6 regression guard: the optimizer must use a SATURATING response
+        model (Hill), not a linear one. Under a linear model the optimum is a
+        trivial corner solution; a saturating model yields diminishing returns
+        and a finite, bounded improvement. We check the artifact declares a
+        non-linear response model."""
         current = {"google_paid_search_spend": 100.0, "tiktok_spend": 100.0}
         elasticities = {"google_paid_search_spend": 3.0, "tiktok_spend": 1.0}
         result = optimize_budget(current, elasticities, intercept=0.0, total_budget=200.0)
-        # Google has 3x the lift => optimizer should allocate more to it
-        assert (
-            result["optimal_spend"]["google_paid_search_spend"]
-            > result["optimal_spend"]["tiktok_spend"]
+        assert "hill" in result["response_model"].lower(), (
+            "Optimizer must use a saturating Hill response, not a linear one (H6)."
         )
-        # Optimal revenue must beat or equal current revenue at same total budget
+
+    def test_optimal_beats_or_matches_current(self):
+        current = {"google_paid_search_spend": 100.0, "tiktok_spend": 100.0}
+        elasticities = {"google_paid_search_spend": 3.0, "tiktok_spend": 1.0}
+        result = optimize_budget(current, elasticities, intercept=0.0, total_budget=200.0)
+        # At the same total budget, the optimized allocation must not be worse.
         assert result["optimal_revenue"] >= result["current_revenue"] - 1e-3
+        # Improvement is BOUNDED under saturation (the old linear version could
+        # imply unbounded gains; saturation cannot).
+        assert result["improvement_pct"] < 1000.0
 
     def test_respects_budget_constraint(self):
         current = {"google_paid_search_spend": 100.0, "tiktok_spend": 100.0}

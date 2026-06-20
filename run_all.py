@@ -13,11 +13,13 @@ from pathlib import Path
 os.environ.setdefault("PYTHONUTF8", "1")
 
 
-def run(cmd: str, cwd: Path | None = None):
+def run(cmd: list[str], cwd: Path | None = None):
     print(f"\n{'=' * 60}")
-    print(f">>> {cmd}")
+    print(f">>> {' '.join(cmd)}")
     print("=" * 60)
-    result = subprocess.run(cmd, shell=True, cwd=cwd)
+    # cmd is a list; no shell=True — avoids shell-injection surface and
+    # correctly handles paths with spaces.
+    result = subprocess.run(cmd, cwd=cwd)
     if result.returncode != 0:
         print(f"WARNING: Command failed with exit code {result.returncode}")
         return False
@@ -31,13 +33,16 @@ def main():
 
     here = Path(__file__).resolve().parent
 
-    # Build step commands, appending output arg if provided
+    # Build step commands as argv lists; append --output if provided.
+    preprocess_cmd = ["python", "scripts/preprocess.py"]
+    if args.output:
+        preprocess_cmd += ["--output", args.output]
     steps = [
-        ("Preprocessing", f"python scripts/preprocess.py{' --output '+args.output if args.output else ''}"),
-        ("MMM Modeling", "python scripts/mmm_model.py"),
-        ("Touchpoint Generation", "python scripts/generate_touchpoints.py"),
-        ("Multi-touch Attribution", "python scripts/multi_touch_attribution.py"),
-        ("Budget Optimization", "python scripts/budget_optimizer.py"),
+        ("Preprocessing", preprocess_cmd),
+        ("MMM Modeling", ["python", "scripts/mmm_model.py"]),
+        ("Touchpoint Generation", ["python", "scripts/generate_touchpoints.py"]),
+        ("Multi-touch Attribution", ["python", "scripts/multi_touch_attribution.py"]),
+        ("Budget Optimization", ["python", "scripts/budget_optimizer.py"]),
     ]
 
     print("Marketing Attribution & Budget Optimization - Full Pipeline")
