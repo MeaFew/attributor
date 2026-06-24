@@ -60,23 +60,53 @@ def optimize_budget(
 ) -> dict:
     """Optimize budget allocation using scipy.optimize.
 
-    Objective: maximize total predicted revenue = sum(elasticity_i * spend_i) + intercept
-    Constraint: sum(spend_i) = total_budget (if provided)
-    Bounds: min_spend_ratio * current <= spend <= max_spend_ratio * current
+    Response model (per channel) is a HILL / saturation function — NOT linear:
 
-    Uses the linear formula matching the Ridge model: revenue = sum(coef_i * x_i) + intercept.
+        revenue_i = coef_i * x_i^gamma / (x_i^gamma + tau_i^gamma)
+
+    where ``coef_i`` is the Ridge elasticity, ``gamma`` the Hill slope, and
+    ``tau_i`` a per-channel half-saturation point set to the channel's current
+    average spend (so the model agrees with the linear elasticity near the
+    observed operating point but exhibits diminishing returns far from it).
+    Total revenue = sum_i(revenue_i) + intercept.
+
+    This fixes the earlier "linear response" issue: under a purely linear
+    objective the optimum is a trivial corner solution that just moves all
+    budget to the highest-elasticity channel and extrapolates far outside the
+    spend range the model was trained on. A saturating response makes the
+    optimal allocation non-trivial and bounds the implied revenue gain.
+
+    Constraint: sum(spend_i) = total_budget (if provided).
+    Bounds: min_spend_ratio * current <= spend <= max_spend_ratio * current.
     """
     channels = list(current_spend.keys())
     current = np.array([current_spend[c] for c in channels])
     elastic = np.array([elasticities.get(c, 0.0) for c in channels])
 
+    # Per-channel half-saturation point: anchor at the current average spend so
+    # the Hill curve matches the linear elasticity near the observed operating
+    # point and bends over as spend grows well beyond it.
+    tau = np.where(current > 0, current, 1.0)
+    gamma = 1.5  # Hill slope; >1 gives an S-curve, mild saturation near tau.
+
     # If no total_budget, keep total constant
     if total_budget is None:
         total_budget = current.sum()
 
-    # Objective: negative revenue using linear formula from Ridge model
+    def hill_response(x: np.ndarray) -> np.ndarray:
+        # Saturation response per channel (diminishing returns).
+        # x >= 0 enforced by bounds; guard tau=0 channels.
+        safe_tau = np.where(tau > 0, tau, 1.0)
+        denom = x**gamma + safe_tau**gamma
+        denom = np.where(denom <= 0, 1e-9, denom)
+        return elastic * (x**gamma) / denom
+
+    def total_revenue(x: np.ndarray) -> float:
+        return float(np.sum(hill_response(x)) + intercept)
+
+    # Objective: maximize total revenue (minimize negative)
     def objective(x):
-        return -(np.sum(elastic * x) + intercept)
+        return -total_revenue(x)
 
     # Constraint: sum(x) = total_budget
     def budget_constraint(x):
@@ -85,8 +115,8 @@ def optimize_budget(
     # Bounds: each channel can vary between min and max ratio of current
     bounds = []
     for i, c in enumerate(channels):
-        min_spend = max(0, current[i] * min_spend_ratio)
-        max_spend = current[i] * max_spend_ratio
+        min_spend = max(0.0, current[i] * min_spend_ratio)
+        max_spend = current[i] * max_spend_ratio if current[i] > 0 else total_budget
         bounds.append((min_spend, max_spend))
 
     constraints = [{"type": "eq", "fun": budget_constraint}]
@@ -100,35 +130,43 @@ def optimize_budget(
         options={"ftol": 1e-9, "maxiter": 1000},
     )
 
-    optimal = result.x
-    predicted_revenue_current = float(np.sum(elastic * current) + intercept)
-    predicted_revenue_optimal = float(np.sum(elastic * optimal) + intercept)
-
     warnings = []
+    if not result.success:
+        warnings.append(
+            f"SLSQP did not report convergence (status={result.status}, "
+            f"msg={result.message}); the returned allocation is the last iterate."
+        )
+
+    optimal = result.x
+    predicted_revenue_current = total_revenue(current)
+    predicted_revenue_optimal = total_revenue(optimal)
+
     if predicted_revenue_current < 0:
         warnings.append(
             f"Negative predicted baseline revenue (${predicted_revenue_current:,.0f}). "
-            "The linear model does not fit this brand well — "
-            "optimization results may be unreliable."
+            "The MMM fit for this brand is weak — optimization results may be unreliable."
         )
+
+    improvement = (
+        float(
+            (predicted_revenue_optimal - predicted_revenue_current)
+            / abs(predicted_revenue_current)
+            * 100
+        )
+        if predicted_revenue_current != 0
+        else 0.0
+    )
 
     return {
         "channels": channels,
+        "response_model": "hill_saturation (gamma=1.5, tau=current_spend)",
         "current_spend": {c: round(float(v), 2) for c, v in zip(channels, current)},
         "optimal_spend": {c: round(float(v), 2) for c, v in zip(channels, optimal)},
         "current_revenue": round(predicted_revenue_current, 2),
         "optimal_revenue": round(predicted_revenue_optimal, 2),
-        "improvement_pct": round(
-            float(
-                (predicted_revenue_optimal - predicted_revenue_current)
-                / abs(predicted_revenue_current)
-                * 100
-            ),
-            2,
-        )
-        if predicted_revenue_current != 0
-        else 0,
+        "improvement_pct": round(improvement, 2),
         "total_budget": round(float(total_budget), 2),
+        "converged": bool(result.success),
         "warnings": warnings,
     }
 

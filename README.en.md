@@ -92,13 +92,17 @@ Key operations:
 
 ### 2. Marketing Mix Modeling (`scripts/mmm_model.py`)
 
-| Model | R^2 | Adj. R^2 | Best Regularization |
-|-------|-----|---------|---------------------|
-| OLS | 0.569 | 0.563 | — |
-| **Ridge** | 0.569 | 0.563 | alpha = 1.0 |
-| Lasso | 0.569 | 0.563 | alpha = 0.1 |
+**Leakage & regularization notes (important):**
+- **Chronological split, not random**: MMM is a daily time series; an earlier version fit on all rows and reported R², which is resubstitution (in-sample). We now hold out the last 20% by date and report both in-sample R² and holdout R²/MAE so the generalization gap is visible.
+- **Standardized Ridge/Lasso + CV alpha**: an earlier version applied tiny alphas (1.0/0.1) on **unscaled** features, so Ridge/Lasso coefficients were nearly identical to OLS (one model dressed as three). We now `StandardScaler` the features and select alpha via `TimeSeriesSplit` over a log grid (Ridge logspace(-3,3), Lasso logspace(-3,1)) so the shrinkage is real and the three models genuinely differ.
 
-> R^2 ~ 0.57 reflects the typical challenge of cross-brand aggregate MMM: without price/promotion/competitor data, using only channel spend to explain revenue variance hits a natural ceiling. Brand-level MMM with richer features can achieve 0.70–0.85.
+| Model | R² (in-sample) | R² (holdout) | MAE (holdout) | Best Regularization |
+|-------|-----|---------|---------|---------------------|
+| OLS | 0.542 | 0.440 | 1,816,109 | — |
+| **Ridge** | 0.342 | 0.419 | 1,812,313 | alpha = 1000 (CV) |
+| Lasso | 0.542 | 0.440 | 1,816,124 | alpha = 10 (CV) |
+
+> Ridge, under the CV-selected large alpha, visibly shrinks coefficients (in-sample R² drops to 0.342 while holdout R² 0.419 stays close to OLS's 0.440) — strong regularization trades a little bias for much more stable coefficients, which matters for out-of-sample budget extrapolation. Lasso selects alpha=10 but zeroes no coefficient (every spend variable is informative). R² ~ 0.54 (in-sample) / 0.44 (holdout) reflects the natural ceiling of aggregate MMM without price/promotion/competitor data; brand-level models can reach 0.70–0.85.
 
 ### 3. Multi-Touch Attribution (`scripts/multi_touch_attribution.py`)
 
@@ -129,16 +133,25 @@ Uses the real **Criteo Attribution Modeling for Bidding Dataset** (30 days of li
 
 ### 4. Budget Optimization (`scripts/budget_optimizer.py`)
 
-Using Ridge MMM coefficients and intercept as a linear response function, SLSQP solves for optimal allocation under a fixed total budget:
+Uses Ridge MMM coefficients as the asymptotic ceiling of a **saturating channel response function**, with SLSQP solving for optimal allocation under a fixed total budget:
 
-| Scenario | Total Budget | Predicted Revenue | Uplift |
+**Response model (saturating, not linear):**
+
+```
+revenue_i = coef_i · spend_i^gamma / (spend_i^gamma + tau_i^gamma)
+```
+
+where `coef_i` is the Ridge elasticity, `gamma=1.5` the Hill slope, and `tau_i` (half-saturation) is anchored at the channel's current average spend — so the model agrees with the linear elasticity near the observed operating point but bends over (diminishing returns) as spend grows well beyond `tau_i`.
+
+| Scenario | Total Budget | Predicted Revenue (current → optimal) | Uplift |
 |----------|-------------|-------------------|--------|
-| Current Allocation (Baseline) | 100% | Baseline | — |
-| **Re-optimized Allocation** | 100% | **+1.8%** | Same total budget, reallocated proportions only |
-| Budget +10% + optimization | 110% | +2.0% | Incremental budget prioritized to high-ROI channels |
-| Budget +20% + optimization | 120% | +2.1% | Diminishing marginal returns begin to emerge |
+| Current Allocation (Baseline) | 100% | $2,082,150 → — | — |
+| **Re-optimized Allocation** | 100% | $2,082,150 → $2,082,159 | **≈ 0.0%** |
+| Budget +10% + optimization | 110% | $2,082,150 → $2,082,159 | ≈ 0.0% |
+| Budget +20% + optimization | 120% | $2,082,150 → $2,082,157 | ≈ 0.0% |
+| Budget -10% + optimization | 90% | $2,082,150 → $2,082,160 | ≈ 0.0% |
 
-> **Business Insight**: Without increasing total budget, data-driven reallocation alone yields ~2% revenue uplift — especially critical for budget-constrained mid-size brands.
+> **Honest business insight**: an earlier version used a **linear** response function, under which the budget-constrained optimum degenerates to a trivial greedy corner solution — push all budget to the highest-elasticity channel and extrapolate far outside the training spend range, yielding a fictitious +1.8% uplift (a linear model implies unbounded returns to scale and cannot support budget guidance). With a saturating response, at this brand's current operating point (each channel already near its own `tau`) reallocation yields essentially no extra revenue (≈0%) and incremental budget's marginal return is naturally capped — which is the honest conclusion a budget optimizer should deliver: **the current allocation is already near a local optimum**. Unlocking real optimization headroom requires stronger features (price, promotion, competitor spend) or finer modeling (sub-channel / daypart).
 
 ---
 
