@@ -70,9 +70,7 @@ def prepare_features(
 
     # Drop zero-variance columns (e.g. a channel with no spend for this brand)
     # — they make VIF undefined and add nothing to the fit.
-    feature_cols = [
-        c for c in feature_cols if df[c].std() is not None and df[c].std() > 0
-    ]
+    feature_cols = [c for c in feature_cols if df[c].std() is not None and df[c].std() > 0]
 
     # Temporal features
     df = df.with_columns(
@@ -131,18 +129,14 @@ def _fit_regularized(
     return model, scaler
 
 
-def _cv_select_alpha(
-    X: np.ndarray, y: np.ndarray, alphas: np.ndarray, kind: str
-) -> float:
+def _cv_select_alpha(X: np.ndarray, y: np.ndarray, alphas: np.ndarray, kind: str) -> float:
     """Pick the alpha with the best mean holdout R^2 under TimeSeriesSplit CV."""
     tscv = TimeSeriesSplit(n_splits=4)
     best_alpha, best_score = float(alphas[0]), -np.inf
     for alpha in alphas:
         scores = []
         for tr_idx, va_idx in tscv.split(X):
-            model, scaler = _fit_regularized(
-                X[tr_idx], y[tr_idx], [], kind, float(alpha)
-            )
+            model, scaler = _fit_regularized(X[tr_idx], y[tr_idx], [], kind, float(alpha))
             y_pred = model.predict(scaler.transform(X[va_idx]))
             scores.append(r2_score(y[va_idx], y_pred))
         mean_score = float(np.mean(scores))

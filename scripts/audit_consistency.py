@@ -18,7 +18,6 @@ if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
 
-
 def check(condition: bool, msg: str) -> bool:
     """Assert-like check that prints pass/fail."""
     if condition:
