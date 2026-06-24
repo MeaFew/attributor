@@ -1,9 +1,15 @@
-"""Unit tests for data preprocessing."""
+"""Unit tests for data preprocessing.
+
+The cleaned parquet is a generated artifact (gitignored) — these tests run
+locally after preprocess. In CI without the raw data they skip gracefully
+rather than failing (matching the pattern in the other repos).
+"""
 
 import sys
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 repo_root = Path(__file__).parents[1].resolve()
 if str(repo_root) not in sys.path:
@@ -13,10 +19,17 @@ from config import CLEANED_PARQUET_PATH
 
 
 def test_cleaned_data_exists():
-    assert CLEANED_PARQUET_PATH.exists(), "Cleaned data not found. Run scripts/preprocess.py first."
+    """Cleaned data must exist (local; skips in CI where raw data is gitignored)."""
+    if not CLEANED_PARQUET_PATH.exists():
+        pytest.skip(
+            f"Cleaned data not found at {CLEANED_PARQUET_PATH} (run scripts/preprocess.py first)"
+        )
+    assert CLEANED_PARQUET_PATH.exists()
 
 
 def test_cleaned_data_schema():
+    if not CLEANED_PARQUET_PATH.exists():
+        pytest.skip(f"Cleaned data not found at {CLEANED_PARQUET_PATH}")
     df = pl.read_parquet(CLEANED_PARQUET_PATH)
     assert df.height > 100_000
     assert "total_spend" in df.columns
@@ -26,11 +39,15 @@ def test_cleaned_data_schema():
 
 
 def test_no_null_total_spend():
+    if not CLEANED_PARQUET_PATH.exists():
+        pytest.skip(f"Cleaned data not found at {CLEANED_PARQUET_PATH}")
     df = pl.read_parquet(CLEANED_PARQUET_PATH)
     assert df["total_spend"].null_count() == 0
 
 
 def test_date_range():
+    if not CLEANED_PARQUET_PATH.exists():
+        pytest.skip(f"Cleaned data not found at {CLEANED_PARQUET_PATH}")
     df = pl.read_parquet(CLEANED_PARQUET_PATH)
     min_date = df["date_day"].min()
     max_date = df["date_day"].max()
