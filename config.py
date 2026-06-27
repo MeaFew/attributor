@@ -28,9 +28,18 @@ CRITEO_JOURNEYS_PATH = PROCESSED_DATA_DIR / "criteo_journeys.parquet"
 # Output directories
 MODEL_OUTPUT_DIR = PROCESSED_DATA_DIR / "models"
 
-# Ensure directories exist
-for d in [RAW_DATA_DIR, PROCESSED_DATA_DIR, REPORTS_DIR, IMAGES_DIR, MODEL_OUTPUT_DIR]:
-    d.mkdir(parents=True, exist_ok=True)
+
+def ensure_dirs() -> None:
+    """Create the project's output directories. Call once at startup.
+
+    Side-effect-free import: merely importing ``config`` no longer creates
+    directories on disk. Every writing script already mkdir's its own output
+    parent, and pipeline entrypoints call this explicitly, so removing the
+    import-time side effect makes ``config`` safe to import read-only (e.g. in
+    tests / CI / the dashboard) without mutating the filesystem.
+    """
+    for d in [RAW_DATA_DIR, PROCESSED_DATA_DIR, REPORTS_DIR, IMAGES_DIR, MODEL_OUTPUT_DIR]:
+        d.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Analysis constants

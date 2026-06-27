@@ -33,6 +33,11 @@ def main():
 
     here = Path(__file__).resolve().parent
 
+    # Materialize output dirs explicitly (config import is now side-effect-free).
+    from config import ensure_dirs
+
+    ensure_dirs()
+
     # Build step commands as argv lists; append --output if provided.
     preprocess_cmd = ["python", "scripts/preprocess.py"]
     if args.output:
