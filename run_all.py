@@ -37,10 +37,28 @@ def main():
     preprocess_cmd = ["python", "scripts/preprocess.py"]
     if args.output:
         preprocess_cmd += ["--output", args.output]
+
+    # NOTE on the attribution path: `make all` (Makefile) runs preprocess_criteo
+    # (REAL Criteo journeys), while this runner historically ran generate_touchpoints
+    # (SYNTHETIC). To unify the two, we attempt the real Criteo preprocessing and
+    # only fall back to synthetic generation if the raw Criteo TSV is absent (it is
+    # ~16M rows and not bundled). multi_touch_attribution.load_data() itself also
+    # falls back from Criteo to simulated parquet, so the downstream step is robust
+    # either way.
+    def _has_criteo():
+        from config import CRITEO_RAW_PATH  # local import keeps top level cheap
+
+        return CRITEO_RAW_PATH.exists()
+
+    if _has_criteo():
+        attribution_prep = ("Criteo preprocessing", ["python", "scripts/preprocess_criteo.py"])
+    else:
+        attribution_prep = ("Touchpoint Generation", ["python", "scripts/generate_touchpoints.py"])
+
     steps = [
         ("Preprocessing", preprocess_cmd),
         ("MMM Modeling", ["python", "scripts/mmm_model.py"]),
-        ("Touchpoint Generation", ["python", "scripts/generate_touchpoints.py"]),
+        attribution_prep,
         ("Multi-touch Attribution", ["python", "scripts/multi_touch_attribution.py"]),
         ("Budget Optimization", ["python", "scripts/budget_optimizer.py"]),
     ]
