@@ -70,6 +70,8 @@ bash download_data.sh
 make setup        # 创建虚拟环境 + 安装依赖
 make all
 # Windows (无 GNU Make): python run_all.py          # 运行完整管线：清洗 → MMM → 归因 → 优化
+#                                                     归因步骤自动判断：有 Criteo 原始数据则走真实
+#                                                     preprocess_criteo，否则 fallback 到 generate_touchpoints 合成
 make dashboard    # 启动 Streamlit 交互看板
 make verify       # 本地质量门（lint + format + test + audit）
 ```
