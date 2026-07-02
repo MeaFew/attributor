@@ -169,7 +169,7 @@ def fit_ols(
                 )
             else:
                 vif_data.append({"feature": name, "vif": round(float(vif), 2)})
-        except Exception:
+        except (ValueError, np.linalg.LinAlgError):
             vif_data.append(
                 {"feature": name, "vif": None, "note": "Cannot compute (zero variance)"}
             )
@@ -457,7 +457,7 @@ def run_cross_brand_elasticity(df: pl.DataFrame) -> pl.DataFrame:
                             "elasticity": info["coef"],
                         }
                     )
-        except Exception as e:
+        except (ValueError, pl.exceptions.PolarsError) as e:
             print(f"  Skip {brand}/{territory}: {e}")
             continue
 

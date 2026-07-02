@@ -79,13 +79,17 @@ def last_touch_attribution(tp: pl.DataFrame) -> dict[str, float]:
 
 
 def linear_attribution(tp: pl.DataFrame) -> dict[str, float]:
-    """Attribute equally across all touchpoints in the journey."""
+    """Attribute the journey's total conversion value equally across all touchpoints."""
+    # Broadcast the journey's total conversion value to every touchpoint
+    journey_value = tp.group_by("user_id").agg(pl.sum("conversion_value").alias("journey_value"))
+    tp = tp.drop("conversion_value").join(journey_value, on="user_id")
+
     # Count touchpoints per user
     counts = tp.group_by("user_id").agg(pl.len().alias("n_touches"))
     tp = tp.join(counts, on="user_id")
-    tp = tp.with_columns(pl.col("conversion_value") / pl.col("n_touches"))
+    tp = tp.with_columns(pl.col("journey_value") / pl.col("n_touches"))
 
-    return _channel_share(tp, "conversion_value")
+    return _channel_share(tp, "journey_value")
 
 
 def time_decay_attribution(

@@ -104,11 +104,11 @@ class TestLastTouch:
 class TestLinearAttribution:
     def test_splits_value_across_touchpoints(self, touchpoints):
         result = linear_attribution(touchpoints)
-        # conversion_value lives on one touchpoint per user (the conversion
-        # touchpoint); linear divides it by n_touches for that user, then sums
-        # per channel. user1: cv=100 on B, /2 touches -> B gets 50. user2: cv=100
-        # on A, /1 touch -> A gets 100. user3: not converted (cv=0).
-        assert result["A"] == pytest.approx(100.0)
+        # Linear first broadcasts the journey's total conversion_value to every
+        # touchpoint, then divides by n_touches for that user. user1: cv=100,
+        # /2 touches -> A=50, B=50. user2: cv=100, /1 touch -> A=100.
+        # user3: not converted (cv=0).
+        assert result["A"] == pytest.approx(150.0)
         assert result["B"] == pytest.approx(50.0)
 
     def test_single_touch_journey_gets_full_value(self):
@@ -123,15 +123,12 @@ class TestLinearAttribution:
         result = linear_attribution(tp)
         assert result["A"] == pytest.approx(80.0)
 
-    def test_divides_each_touchpoints_value_by_journey_length(self):
-        """linear_attribution divides each touchpoint's OWN conversion_value by
-        n_touches — it does not re-distribute the journey total across touches.
+    def test_broadcasts_journey_total_across_touchpoints(self):
+        """Linear attribution redistributes the journey total across all touches.
 
-        NOTE: this documents the current implementation contract. When the input
-        only carries conversion_value on the conversion touchpoint (as Criteo
-        data does), the earlier non-conversion touchpoints contribute 0 even
-        though the journey passes through them. Callers that want even splits
-        must replicate conversion_value onto every touchpoint of the journey.
+        Even when conversion_value only lives on the conversion touchpoint,
+        the journey total is broadcast so every touchpoint receives an equal
+        share.
         """
         tp = pl.DataFrame(
             {
@@ -141,7 +138,7 @@ class TestLinearAttribution:
             }
         )
         result = linear_attribution(tp)
-        assert result["A"] == pytest.approx(0.0)
+        assert result["A"] == pytest.approx(40.0)
         assert result["B"] == pytest.approx(40.0)
 
 

@@ -228,7 +228,7 @@ def main() -> None:
                     current_spend[ch] = fallback
                 else:
                     current_spend[ch] = 0.0
-    except Exception as e:
+    except (OSError, pl.exceptions.PolarsError, pl.exceptions.ArrowError) as e:
         print(f"Warning: Could not load cleaned data: {e}")
         print("Using zero baseline for all channels.")
         current_spend = {ch: 0.0 for ch in SPEND_CHANNELS}

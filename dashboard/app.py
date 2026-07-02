@@ -74,7 +74,7 @@ if page == "MMM Overview":
     vif_data = ols.get("vif", [])
     if vif_data:
         vif_df = pl.DataFrame(vif_data).sort("vif", descending=True)
-        st.dataframe(vif_df.to_pandas(), width="stretch")
+        st.dataframe(vif_df.to_pandas(), use_container_width=True)
 
     # Coefficient comparison chart
     st.subheader("Channel Coefficient Comparison")
@@ -101,13 +101,13 @@ if page == "MMM Overview":
             barmode="group",
             height=500,
         )
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, use_container_width=True)
 
     # Residual diagnostics images
     st.subheader("Residual Diagnostics")
     res_img = IMAGES_DIR / "mmm_residual_diagnostics.png"
     if res_img.exists():
-        st.image(str(res_img), width="stretch")
+        st.image(str(res_img), use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Page 2: Attribution Comparison
@@ -145,7 +145,7 @@ if page == "Attribution Comparison":
         yaxis_title="Attributed %",
         height=600,
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
     # Data table
     st.subheader("Detailed Comparison")
@@ -155,7 +155,7 @@ if page == "Attribution Comparison":
         for model in model_names:
             row[model] = f"{attr[model].get(ch, 0):.1f}%"
         rows.append(row)
-    st.dataframe(pl.DataFrame(rows).to_pandas(), width="stretch")
+    st.dataframe(pl.DataFrame(rows).to_pandas(), use_container_width=True)
 
 # ---------------------------------------------------------------------------
 # Page 3: Budget Simulator
@@ -197,7 +197,7 @@ if page == "Budget Simulator":
         yaxis_title="Spend ($)",
         height=500,
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, use_container_width=True)
 
     # Interactive budget slider
     st.subheader("Interactive Budget Adjustment")
