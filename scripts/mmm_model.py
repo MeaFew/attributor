@@ -38,16 +38,16 @@ if str(repo_root) not in sys.path:
 
 from config import (
     CLEANED_PARQUET_PATH,
+    HOLDOUT_FRACTION,
     IMAGES_DIR,
     MODEL_OUTPUT_DIR,
     SPEND_CHANNELS,
     TARGET_NEW_REVENUE,
 )
 
-# Fraction of the (chronologically ordered) series held out for honest
-# generalization estimation. MMM is a daily time series, so the split is by
-# date — never a random shuffle.
-HOLDOUT_FRACTION = 0.2
+# HOLDOUT_FRACTION now comes from config (single source of truth). MMM is a
+# daily time series, so the split is by date — never a random shuffle.
+# Log-spaced regularization grid; alpha is selected by time-series CV.
 # Log-spaced regularization grid; alpha is selected by time-series CV.
 RIDGE_ALPHAS = np.logspace(-3, 3, 13)
 LASSO_ALPHAS = np.logspace(-3, 1, 13)

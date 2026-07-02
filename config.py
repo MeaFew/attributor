@@ -97,6 +97,26 @@ TARGET_NEW_REVENUE = "first_purchases_original_price"
 TARGET_ALL_CUSTOMERS = "all_purchases"
 TARGET_ALL_REVENUE = "all_purchases_original_price"
 
+# ---------------------------------------------------------------------------
+# Modeling hyperparameters
+# ---------------------------------------------------------------------------
+# Centralized so README/docs and the code cannot drift apart. Each is documented
+# inline where it is used.
+HOLDOUT_FRACTION = 0.2  # time-based train/test split for MMM evaluation
+
+# Adstock decay rate (preprocess.py): spend is decayed across lagged days with
+# weights decay^k. 0.5 → moderate carryover.
+ADSTOCK_DECAY = 0.5
+
+# Time-decay attribution half-life (multi_touch_attribution.py), in days. A
+# touchpoint half_life_days before conversion gets half the weight of the
+# converting touchpoint.
+ATTRIBUTION_HALF_LIFE_DAYS = 7.0
+
+# Hill saturation slope (budget_optimizer.py): gamma > 1 gives an S-curve with
+# mild saturation near the half-saturation point (tau = current spend).
+HILL_GAMMA = 1.5
+
 # Simulation parameters for touchpoint data
 SIMULATION_PARAMS = {
     "n_users": 50_000,

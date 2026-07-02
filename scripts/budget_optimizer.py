@@ -14,6 +14,7 @@ if str(repo_root) not in sys.path:
 
 from config import (
     CLEANED_PARQUET_PATH,
+    HILL_GAMMA,
     MODEL_OUTPUT_DIR,
     SPEND_CHANNELS,
 )
@@ -87,7 +88,7 @@ def optimize_budget(
     # the Hill curve matches the linear elasticity near the observed operating
     # point and bends over as spend grows well beyond it.
     tau = np.where(current > 0, current, 1.0)
-    gamma = 1.5  # Hill slope; >1 gives an S-curve, mild saturation near tau.
+    gamma = HILL_GAMMA  # Hill slope; >1 gives an S-curve, mild saturation near tau.
 
     # If no total_budget, keep total constant
     if total_budget is None:
@@ -159,7 +160,7 @@ def optimize_budget(
 
     return {
         "channels": channels,
-        "response_model": "hill_saturation (gamma=1.5, tau=current_spend)",
+        "response_model": f"hill_saturation (gamma={HILL_GAMMA}, tau=current_spend)",
         "current_spend": {c: round(float(v), 2) for c, v in zip(channels, current)},
         "optimal_spend": {c: round(float(v), 2) for c, v in zip(channels, optimal)},
         "current_revenue": round(predicted_revenue_current, 2),

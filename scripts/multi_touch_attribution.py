@@ -15,6 +15,7 @@ if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 from config import (
+    ATTRIBUTION_HALF_LIFE_DAYS,
     CRITEO_JOURNEYS_PATH,
     CRITEO_TOUCHPOINTS_PATH,
     MODEL_OUTPUT_DIR,
@@ -87,13 +88,17 @@ def linear_attribution(tp: pl.DataFrame) -> dict[str, float]:
     # Count touchpoints per user
     counts = tp.group_by("user_id").agg(pl.len().alias("n_touches"))
     tp = tp.join(counts, on="user_id")
-    tp = tp.with_columns(pl.col("journey_value") / pl.col("n_touches"))
+    # Equal split: journey_value / n_touches. Write to a dedicated "attributed"
+    # column (explicit alias) instead of overwriting "journey_value" in place —
+    # the in-place overwrite relied on Polars keeping the expression's source
+    # column name, which is fragile across refactors/Polars versions.
+    tp = tp.with_columns((pl.col("journey_value") / pl.col("n_touches")).alias("attributed"))
 
-    return _channel_share(tp, "journey_value")
+    return _channel_share(tp, "attributed")
 
 
 def time_decay_attribution(
-    tp: pl.DataFrame, journeys: pl.DataFrame, half_life_days: float = 7.0
+    tp: pl.DataFrame, journeys: pl.DataFrame, half_life_days: float = ATTRIBUTION_HALF_LIFE_DAYS
 ) -> dict[str, float]:
     """Attribute more weight to touchpoints closer to conversion.
 
@@ -136,10 +141,14 @@ def time_decay_attribution(
     conv_values = journeys.select(["user_id", "conversion_value"])
     tp = tp.join(conv_values, on="user_id")
 
-    # Attribute: weight/total_weight * user's total conversion_value
-    tp = tp.with_columns(pl.col("weight") / pl.col("total_weight") * pl.col("conversion_value"))
+    # Attribute: weight/total_weight * user's total conversion_value. Write to a
+    # dedicated "attributed" column via explicit alias rather than overwriting
+    # "weight" in place (see linear_attribution for the rationale).
+    tp = tp.with_columns(
+        (pl.col("weight") / pl.col("total_weight") * pl.col("conversion_value")).alias("attributed")
+    )
 
-    return _channel_share(tp, "weight")
+    return _channel_share(tp, "attributed")
 
 
 # ---------------------------------------------------------------------------

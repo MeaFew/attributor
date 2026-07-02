@@ -7,14 +7,15 @@ impressions/revenue columns, and organic channel columns).
 """
 
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
 import polars as pl
 
 repo_root = Path(__file__).parents[1].resolve()
-if str(repo_root) not in __import__("sys").path:
-    __import__("sys").path.insert(0, str(repo_root))
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
 
 from config import (
     CLICK_CHANNELS,

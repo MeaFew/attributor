@@ -13,6 +13,7 @@ if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
 from config import (
+    ADSTOCK_DECAY,
     CLEANED_PARQUET_PATH,
     CLICK_CHANNELS,
     IMPRESSION_CHANNELS,
@@ -160,8 +161,8 @@ def create_lag_features(df: pl.DataFrame) -> pl.DataFrame:
                 .fill_null(0)
             )
 
-    # Adstock (exponentially decayed lag) with decay rate 0.5
-    decay = 0.5
+    # Adstock (exponentially decayed lag) with decay rate from config.
+    decay = ADSTOCK_DECAY
     for spend_col in SPEND_CHANNELS:
         if spend_col not in df.columns:
             continue

@@ -81,14 +81,17 @@ def main():
         print(f"  SKIP: attribution_comparison.json not found at {attr_path}")
         print("         Run 'python scripts/multi_touch_attribution.py' first.")
 
-    # --- Check 3: At least 5 attribution models in attribution_comparison.json ---
+    # --- Check 3: Exactly 6 attribution models in attribution_comparison.json ---
+    # The pipeline ships 6 models (First/Last/Linear/TimeDecay/Shapley/Removal).
+    # A precise count catches a dropped model; the old loose `>= 5` did not.
+    EXPECTED_ATTR_MODELS = 6
     if attr_path.exists():
         with open(attr_path) as f:
             attr = json.load(f)
         n_models = len(attr)
         ok = check(
-            n_models >= 5,
-            f"Attribution model count: {n_models} (expected >= 5)",
+            n_models == EXPECTED_ATTR_MODELS,
+            f"Attribution model count: {n_models} (expected == {EXPECTED_ATTR_MODELS})",
         )
         if ok:
             passed += 1
